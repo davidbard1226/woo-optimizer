@@ -97,7 +97,8 @@ export async function fetchProducts(params: {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`WooCommerce API error (${response.status}): ${text}`);
+    const snippet = text.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
+    throw new Error(`WooCommerce API error (${response.status}): ${snippet}`);
   }
 
   const products: WCProduct[] = await response.json();
