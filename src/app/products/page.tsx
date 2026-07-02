@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { WCProduct, HealthScore as HealthScoreType } from "@/lib/types";
 import { calculateHealthScore } from "@/lib/health-score";
 import HealthScoreComponent from "@/components/HealthScore";
-import { Search, ChevronLeft, ChevronRight, ExternalLink, Loader2 } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, ExternalLink, Loader2, AlertCircle } from "lucide-react";
 
 interface ProductWithScore extends WCProduct {
   healthScore: HealthScoreType;
@@ -15,25 +15,33 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<ProductWithScore[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [sortBy, setSortBy] = useState("date");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [error, setError] = useState("");
+  const searchTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const loadProducts = useCallback(async () => {
+  const loadProducts = useCallback(async (searchTerm: string, pageNum: number) => {
     setLoading(true);
+    setError("");
     try {
       const params = new URLSearchParams({
-        page: String(page),
+        page: String(pageNum),
         per_page: "20",
         orderby: sortBy,
         order: sortOrder,
+        status: "any",
       });
-      if (search) params.set("search", search);
+      if (searchTerm) params.set("search", searchTerm);
 
       const res = await fetch(`/api/products?${params}`);
-      if (!res.ok) throw new Error("Failed to load products");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to load products");
+      }
       const data = await res.json();
 
       const withScores: ProductWithScore[] = (data.products || []).map((p: WCProduct) => ({
@@ -41,7 +49,6 @@ export default function ProductsPage() {
         healthScore: calculateHealthScore(p),
       }));
 
-      // Sort by health score if selected
       if (sortBy === "health") {
         withScores.sort((a, b) =>
           sortOrder === "asc"
@@ -53,21 +60,31 @@ export default function ProductsPage() {
       setProducts(withScores);
       setTotalPages(data.totalPages || 1);
       setTotal(data.total || 0);
-    } catch {
-      // Error handled silently
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load products");
+      setProducts([]);
     } finally {
       setLoading(false);
     }
-  }, [page, search, sortBy, sortOrder]);
+  }, [sortBy, sortOrder]);
 
   useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
+    loadProducts(search, page);
+  }, [page, sortBy, sortOrder, search, loadProducts]);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSearch(searchInput);
     setPage(1);
-    loadProducts();
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setSearch(value);
+      setPage(1);
+    }, 400);
   };
 
   return (
@@ -75,19 +92,19 @@ export default function ProductsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Products</h1>
-          <p className="text-gray-400">{total} products total</p>
+          <p className="text-gray-400">{total.toLocaleString()} products total</p>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-4">
-        <form onSubmit={handleSearch} className="flex flex-1 items-center gap-2">
+        <form onSubmit={handleSearchSubmit} className="flex flex-1 items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
             <input
               type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products..."
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              placeholder="Search by product name, SKU..."
               className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2.5 pl-10 pr-4 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </div>
@@ -118,13 +135,26 @@ export default function ProductsPage() {
         </button>
       </div>
 
+      {error && (
+        <div className="flex items-center gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-sm text-red-400">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          {error}
+        </div>
+      )}
+
       {loading ? (
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
         </div>
       ) : products.length === 0 ? (
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-12 text-center">
-          <p className="text-gray-400">No products found</p>
+          <Search className="mx-auto mb-3 h-8 w-8 text-gray-600" />
+          <p className="text-gray-400">
+            {search ? `No products matching "${search}"` : "No products found"}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Try a different search term or clear the search box
+          </p>
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-gray-800 bg-gray-900">
