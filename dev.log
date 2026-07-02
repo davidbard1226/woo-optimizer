@@ -1,0 +1,79 @@
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 3.2s
+ ○ Compiling /products ...
+ ✓ Compiled /products in 5.8s (580 modules)
+ ✓ Compiled in 954ms (283 modules)
+ GET /products 200 in 6852ms
+ ✓ Compiled /favicon.ico in 432ms (329 modules)
+ GET /favicon.ico 200 in 646ms
+ GET /products 200 in 409ms
+ ✓ Compiled /api/products in 217ms (357 modules)
+ GET /favicon.ico 200 in 478ms
+ GET /api/products?page=1&per_page=20&orderby=date&order=desc 200 in 3187ms
+ GET /api/products?page=1&per_page=20&orderby=date&order=desc 200 in 29ms
+ GET /api/products?page=1&per_page=20&orderby=date&order=desc 200 in 3023ms
+ GET /api/products?page=1&per_page=20&orderby=date&order=desc 200 in 46ms
+ ○ Compiling / ...
+ ✓ Compiled / in 736ms (640 modules)
+ GET / 200 in 156ms
+ ✓ Compiled /api/analytics in 216ms (368 modules)
+Failed to set fetch cache https://bonoloonline.co.za/wp-json/wc/v3/products?consumer_key=ck_1ef338a2636d5c7b8d39ba39860b9f06eaf028e5&consumer_secret=cs_d1a1e72b0d3d41651b979378a52992ed942e144f&page=1&per_page=100&status=any Error: Failed to set Next.js data cache, items over 2MB can not be cached (2142389 bytes)
+    at IncrementalCache.set (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\lib\incremental-cache\index.js:388:23)
+    at C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:54468
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async fetchProducts (webpack-internal:///(rsc)/./src/lib/woocommerce.ts:83:22)
+    at async GET (webpack-internal:///(rsc)/./src/app/api/analytics/route.ts:21:28)
+    at async C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:57228
+    at async eT.execute (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:46851)
+    at async eT.handle (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\compiled\next-server\app-route.runtime.dev.js:6:58760)
+    at async doRender (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\base-server.js:1366:42)
+    at async cacheEntry.responseCache.get.routeKind (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\base-server.js:1588:28)
+    at async DevServer.renderToResponseWithComponentsImpl (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\base-server.js:1496:28)
+    at async DevServer.renderPageComponent (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\base-server.js:1924:24)
+    at async DevServer.renderToResponseImpl (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\base-server.js:1962:32)
+    at async DevServer.pipeImpl (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\base-server.js:922:25)
+    at async NextNodeServer.handleCatchallRenderRequest (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\next-server.js:272:17)
+    at async DevServer.handleRequestImpl (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\base-server.js:818:17)
+    at async C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\dev\next-dev-server.js:339:20
+    at async Span.traceAsyncFn (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\trace\trace.js:154:20)
+    at async DevServer.handleRequest (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\dev\next-dev-server.js:336:24)
+    at async invokeRender (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\lib\router-server.js:179:21)
+    at async handleRequest (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\lib\router-server.js:359:24)
+    at async requestHandlerImpl (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\lib\router-server.js:383:13)
+    at async Server.requestListener (C:\Users\David\OpenCodeProjects\woo-optimizer\node_modules\next\dist\server\lib\start-server.js:141:13)
+ GET /api/analytics 200 in 60ms
+ GET / 200 in 233ms
+ GET /api/analytics 200 in 65ms
+ GET /api/analytics 200 in 109ms
+ GET /api/analytics 200 in 14255ms
+ ○ Compiling /products/[id] ...
+ ✓ Compiled /products/[id] in 1027ms (655 modules)
+ ✓ Compiled /api/products/[id] in 262ms (377 modules)
+ GET /api/products/49684 200 in 3475ms
+ GET /api/products/49684 200 in 33ms
+ ✓ Compiled /api/optimize/history in 286ms (379 modules)
+ GET /api/optimize/history?productId=49684 200 in 1442ms
+ GET /api/optimize/history?productId=49684 200 in 24ms
+ ○ Compiling /api/optimize ...
+ ✓ Compiled /api/optimize in 650ms (382 modules)
+ POST /api/optimize 200 in 11501ms
+ GET /api/products?page=1&per_page=20&orderby=date&order=desc 200 in 30ms
+ GET /api/products?page=1&per_page=20&orderby=date&order=desc 200 in 31ms
+ GET /api/products/50501 200 in 2047ms
+ GET /api/products/50501 200 in 31ms
+ GET /api/optimize/history?productId=50501 200 in 19ms
+ GET /api/optimize/history?productId=50501 200 in 12ms
+ ○ Compiling /api/products/update ...
+ ✓ Compiled /api/products/update in 593ms (349 modules)
+ POST /api/products/update 200 in 3730ms
+ GET /api/products/50501 200 in 71ms
+ ✓ Compiled /api/optimize in 213ms (348 modules)
+ POST /api/optimize 200 in 12152ms
+ ✓ Compiled in 1098ms (628 modules)
+ ✓ Compiled in 987ms (638 modules)
+ POST /api/optimize 200 in 12997ms
+[?25h
