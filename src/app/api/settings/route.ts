@@ -12,7 +12,7 @@ export async function GET() {
       wc_consumer_key: settings.wc_consumer_key || process.env.WC_CONSUMER_KEY || "",
       wc_consumer_secret: settings.wc_consumer_secret || process.env.WC_CONSUMER_SECRET || "",
       openrouter_api_key: settings.openrouter_api_key || process.env.OPENROUTER_API_KEY || "",
-      ai_model: settings.ai_model || process.env.AI_MODEL || "nvidia/nemotron-3-super-120b-a12b:free",
+      ai_model: settings.ai_model || process.env.AI_MODEL || "google/gemini-2.0-flash-exp:free",
     };
     return NextResponse.json(merged);
   } catch (error) {
