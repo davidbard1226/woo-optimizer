@@ -1,103 +1,150 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchProducts, fetchProduct } from "@/lib/woocommerce";
-import { generateAll } from "@/lib/ai";
-import { saveBulkResult } from "@/lib/db";
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRateLimitError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes("429") || msg.includes("rate-limited") || msg.includes("Resource Limit");
-}
+import { fetchProducts, updateProduct, fetchProduct } from "@/lib/woocommerce";
+import { WCProduct } from "@/lib/types";
 
 interface BatchResult {
-  id: number;
+  productId: number;
   name: string;
-  status: "success" | "error";
+  altFilled: number;
+  categoryAdded: string | null;
+  attributesAdded: number;
   error?: string;
 }
 
-async function processConcurrent(
-  ids: number[],
-  concurrency: number,
-  processFn: (id: number) => Promise<{ name: string }>
-): Promise<BatchResult[]> {
-  const results: BatchResult[] = new Array(ids.length);
-  let backoffMs = 0;
-  let cursor = 0;
+function extractAttributes(product: WCProduct): { name: string; options: string[]; visible: boolean; variation: boolean }[] {
+  const existing = new Set((product.attributes || []).map((a) => a.name.toLowerCase()));
+  const text = (product.name + " " + (product.description || "") + " " + (product.short_description || "")).toLowerCase();
+  const attrDefs: { name: string; patterns: RegExp[] }[] = [
+    { name: "Capacity", patterns: [/(\d+)\s*(gb|tb)/gi] },
+    { name: "Interface", patterns: [/usb\s*3\.\d+/gi, /usb\s*2\.\d+/gi, /pcie\s*\d\.\d/gi, /nvme/gi, /sata/gi, /usb-c/gi, /thunderbolt/gi] },
+    { name: "Speed", patterns: [/(\d+)\s*(mb\/s|gb\/s|mbps|gbps)/gi, /class\s*\d+/gi, /uhs[- ]\w+/gi, /(\d+)\s*ppm/gi] },
+    { name: "Form Factor", patterns: [/m\.2/gi, /2\.5\s*inch/gi, /sff/gi, /desktop/gi, /laptop/gi, /portable/gi, /external/gi, /internal/gi] },
+    { name: "Color", patterns: [/black/gi, /white/gi, /silver/gi, /grey/gi, /blue/gi, /red/gi, /gold/gi] },
+    { name: "Type", patterns: [/sdhc/gi, /sdxc/gi, /microsd/gi, /cfexpress/gi, /compactflash/gi, /ssd/gi, /hdd/gi, /nvme/gi, /flash\s*drive/gi, /usb\s*drive/gi] },
+    { name: "Compatibility", patterns: [/for\s+(\w+\s*\w*)/gi, /compatible\s+with\s+(.+)/gi] },
+  ];
 
-  async function worker() {
-    while (cursor < ids.length) {
-      const idx = cursor++;
-      const id = ids[idx];
-
-      if (backoffMs > 0) await delay(backoffMs);
-
-      try {
-        const { name } = await processFn(id);
-        results[idx] = { id, name, status: "success" };
-        backoffMs = Math.max(0, backoffMs - 500); // ease off after a success
-      } catch (err) {
-        if (isRateLimitError(err)) {
-          // back off exponentially (capped at 30s) and retry this same product
-          backoffMs = Math.min(backoffMs ? backoffMs * 2 : 2000, 30000);
-          cursor--;
-          await delay(backoffMs);
-        } else {
-          results[idx] = {
-            id,
-            name: `Product ${id}`,
-            status: "error",
-            error: err instanceof Error ? err.message : "Unknown error",
-          };
-        }
+  const attrs: { name: string; options: string[]; visible: boolean; variation: boolean }[] = [];
+  for (const def of attrDefs) {
+    if (existing.has(def.name.toLowerCase())) continue;
+    const options: string[] = [];
+    for (const pattern of def.patterns) {
+      let match;
+      pattern.lastIndex = 0;
+      while ((match = pattern.exec(text)) !== null) {
+        const val = match[1] ? match[1].trim() : match[0].trim();
+        if (val.length > 1 && val.length < 30) options.push(val.charAt(0).toUpperCase() + val.slice(1).toLowerCase());
       }
     }
+    const unique = Array.from(new Set(options)).slice(0, 3);
+    if (unique.length > 0) {
+      attrs.push({ name: def.name, options: unique, visible: true, variation: false });
+    }
   }
-
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
-  return results;
+  return attrs;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { productIds, filters, maxProducts: requestedMax } = body;
+    const { batchSize = 50, offset = 0, fixAlts = true, fixCategories = true, fixAttributes = true } = body;
 
-    let ids = productIds as number[] | undefined;
+    const { products, total } = await fetchProducts({ per_page: batchSize, page: Math.floor(offset / batchSize) + 1, status: "any" });
 
-    if (!ids || ids.length === 0) {
-      const limit = Math.min(requestedMax || 10, 50);
-      const result = await fetchProducts({
-        per_page: limit,
-        status: "publish",
-        ...filters,
-      });
-      ids = result.products.map((p) => p.id);
+    if (products.length === 0) {
+      return NextResponse.json({ processed: 0, total: 0, offset: 0, remaining: 0 });
     }
 
-    const maxProducts = Math.min(ids.length, requestedMax || 10);
-    const idsToProcess = ids.slice(0, maxProducts);
+    const results: BatchResult[] = [];
 
-    const results = await processConcurrent(idsToProcess, 3, async (id) => {
-      const product = await fetchProduct(id);
-      const content = await generateAll(product);
-      // Persist generated content so it can be reviewed/applied from the Bulk page
-      // instead of being thrown away once the batch finishes.
-      saveBulkResult(id, product.name, content);
-      return { name: product.name };
-    });
+    for (const product of products) {
+      try {
+        const full = await fetchProduct(product.id);
+        const updates: Record<string, unknown> = {};
+        let altFilled = 0;
+        let categoryAdded: string | null = null;
+        let attributesAdded = 0;
 
+        // 1. Fill alt text on images
+        if (fixAlts && full.images) {
+          const updatedImages = full.images.map((img) => {
+            if (!img.alt || img.alt.trim().length === 0) {
+              altFilled++;
+              return { ...img, alt: full.name || "" };
+            }
+            return img;
+          });
+          if (altFilled > 0) updates.images = updatedImages;
+        }
+
+        // 2. Add second category if only 1
+        if (fixCategories && full.categories && full.categories.length === 1) {
+          const cats = full.categories.map((c) => c.name);
+          const parentName = cats[0];
+          const subCats: Record<string, string> = {
+            "Memory Cards & Storage": "Storage Devices",
+            "Storage": "Memory Cards",
+            "Printers & Scanners": "Printer Accessories",
+            "Laptops & Desktops": "Desktop Accessories",
+            "Networking": "Network Accessories",
+            "Cables & Adapters": "Connectivity",
+            "Software": "Digital Products",
+          };
+          const second = subCats[parentName] || "Accessories";
+          if (!cats.includes(second)) {
+            full.categories.push({ id: 0, name: second, slug: "" });
+            updates.categories = full.categories;
+            categoryAdded = second;
+          }
+        }
+
+        // 3. Extract attributes
+        if (fixAttributes) {
+          const existing = full.attributes || [];
+          const newAttrs = extractAttributes(full).filter(
+            (na) => !existing.some((ea) => ea.name.toLowerCase() === na.name.toLowerCase())
+          );
+          if (newAttrs.length > 0) {
+            updates.attributes = [...existing, ...newAttrs];
+            attributesAdded = newAttrs.length;
+          }
+        }
+
+        // Apply updates
+        if (Object.keys(updates).length > 0) {
+          await updateProduct(full.id, updates as any);
+        }
+
+        results.push({
+          productId: full.id,
+          name: full.name || "",
+          altFilled,
+          categoryAdded,
+          attributesAdded,
+        });
+      } catch (err) {
+        results.push({
+          productId: product.id,
+          name: product.name || "",
+          altFilled: 0,
+          categoryAdded: null,
+          attributesAdded: 0,
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
+
+    const newOffset = offset + products.length;
     return NextResponse.json({
+      processed: products.length,
+      total,
+      offset: newOffset,
+      remaining: Math.max(0, total - newOffset),
       results,
-      total: idsToProcess.length,
-      processed: results.filter((r) => r.status === "success").length,
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Batch optimization failed" },
+      { error: error instanceof Error ? error.message : "Batch optimize failed" },
       { status: 500 }
     );
   }
