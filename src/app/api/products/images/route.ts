@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         const newImage: Record<string, unknown> = {
           src: imageUrl,
           name: imageName || "",
-          alt: "",
+          alt: product.name || "",
           position: images.length,
         };
         images.push(newImage as any);
@@ -38,7 +38,6 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "imageId required" }, { status: 400 });
         }
         images = images.filter((img) => img.id !== imageId);
-        // Re-index positions
         images.forEach((img, i) => { img.position = i; });
         break;
       }
@@ -51,10 +50,17 @@ export async function POST(request: NextRequest) {
           images.push({
             src: url,
             name: "",
-            alt: "",
+            alt: product.name || "",
             position: images.length,
           } as any);
         }
+        break;
+      }
+      case "fill-alt": {
+        images = images.map((img) => ({
+          ...img,
+          alt: img.alt || product.name || "",
+        }));
         break;
       }
       case "reorder": {
