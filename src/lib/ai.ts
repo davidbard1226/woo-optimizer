@@ -171,38 +171,48 @@ export async function generateDescription(product: WCProduct): Promise<string> {
 ${context}
 
 Rules:
-- Use HTML tags: <p>, <strong>, <ul>, <li>
+- Use HTML tags: <p>, <strong>
 - 200-500 words
+- Do NOT include bullet points — they will be in the short description
 - Include keywords for Google SEO
 - Highlight benefits and features
 - Write in persuasive marketing language
 - Price is in South African Rands (ZAR)`, 2048);
 }
 
-export async function generateShortDescription(product: WCProduct): Promise<string> {
+export async function generateShortDescription(product: WCProduct, bulletPoints: string[] = []): Promise<string> {
   const context = buildProductContext(product);
-  return callAI(`Write a 1-2 sentence product summary for:
+  const summary = await callAI(`Write a 1-2 sentence product summary for:
 
 ${context}
 
 Plain text only. No HTML. Under 300 characters. Include the key selling point.`, 256);
+
+  const bullets = bulletPoints.slice(0, 5);
+  if (bullets.length > 0) {
+    return summary + "\n\n" + bullets.map((b) => "• " + b).join("\n");
+  }
+  return summary;
 }
 
 export async function generateBulletPoints(product: WCProduct): Promise<string[]> {
   const context = buildProductContext(product);
-  const response = await callAI(`Write 5-8 product feature bullet points for:
+  const response = await callAI(`Write 5 product feature bullet points for:
 
 ${context}
 
 One per line. Format: Feature Name: description
 Example:
-Compatibility: Works with Olivetti 3524MF printers
-Page Yield: Up to 8,000 pages at 5% coverage`, 512);
+Speed: Up to 25 ppm for efficient workflow
+Capacity: 128GB of reliable storage
+
+Output exactly 5 bullets, no more.`, 512);
 
   return response
     .split("\n")
     .map((l) => l.replace(/^[-•*]\s*/, "").trim())
-    .filter((l) => l.includes(":") && l.length > 10);
+    .filter((l) => l.includes(":") && l.length > 10)
+    .slice(0, 5);
 }
 
 export async function generateSEO(product: WCProduct): Promise<{
@@ -245,22 +255,19 @@ high capacity`, 256);
 }
 
 export async function generateAll(product: WCProduct): Promise<AIGeneratedContent> {
-  const [title, description, shortDescription, bulletPoints, seo, tags] = await Promise.all([
+  const [title, description, bulletPoints, seo, tags] = await Promise.all([
     generateTitle(product),
     generateDescription(product),
-    generateShortDescription(product),
     generateBulletPoints(product),
     generateSEO(product),
     generateTags(product),
   ]);
 
-  const bulletHtml = bulletPoints.length > 0
-    ? `\n<ul>\n${bulletPoints.map((b) => `  <li>${b}</li>`).join("\n")}\n</ul>`
-    : "";
+  const shortDescription = await generateShortDescription(product, bulletPoints);
 
   return {
     name: title,
-    description: description + bulletHtml,
+    description,
     shortDescription,
     bulletPoints,
     metaTitle: seo.metaTitle,
