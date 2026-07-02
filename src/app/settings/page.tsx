@@ -10,7 +10,7 @@ export default function SettingsPage() {
     wc_consumer_key: "",
     wc_consumer_secret: "",
     openrouter_api_key: "",
-    ai_model: "deepseek/deepseek-chat-v3-0324:free",
+    ai_model: "nvidia/nemotron-3-super-120b-a12b:free",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,7 +37,7 @@ export default function SettingsPage() {
         wc_consumer_key: data.wc_consumer_key || "",
         wc_consumer_secret: data.wc_consumer_secret || "",
         openrouter_api_key: data.openrouter_api_key || "",
-        ai_model: data.ai_model || "google/gemini-2.0-flash-exp:free",
+        ai_model: data.ai_model || "nvidia/nemotron-3-super-120b-a12b:free",
       }));
     } catch {
       // Use defaults
@@ -118,7 +118,8 @@ export default function SettingsPage() {
   }
 
   const freeModels = [
-    { id: "deepseek/deepseek-chat-v3-0324:free", name: "DeepSeek Chat V3 (Recommended)" },
+    { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super 120B (Recommended)" },
+    { id: "deepseek/deepseek-chat-v3-0324:free", name: "DeepSeek Chat V3" },
     { id: "google/gemini-2.0-flash-exp:free", name: "Gemini 2.0 Flash (Free)" },
     { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (Free)" },
     { id: "google/gemma-4-26b-a4b-it:free", name: "Google Gemma 4 26B" },
