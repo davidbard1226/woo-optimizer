@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { WCProduct, AIGeneratedContent, HealthScore as HealthScoreType } from "@/lib/types";
 import { calculateHealthScore } from "@/lib/health-score";
 import HealthScoreComponent from "@/components/HealthScore";
-import { ArrowLeft, Loader2, ExternalLink, Check, Image as ImageIcon, Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowLeft, Loader2, ExternalLink, Check, Image as ImageIcon, Plus, Trash2, ArrowUp, ArrowDown, Upload } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
@@ -334,6 +334,10 @@ function HealthScoreCard({ healthScore }: { healthScore: HealthScoreType | null 
 function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (updates: Record<string, unknown>) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [regularPrice, setRegularPrice] = useState(String(product.regular_price || product.price || ""));
+  const [salePrice, setSalePrice] = useState(String(product.sale_price || ""));
+  const [stockStatus, setStockStatus] = useState(product.stock_status || "instock");
+  const [sku, setSku] = useState(product.sku || "");
   const [gtin, setGtin] = useState(String(product["gtin"] || ""));
   const [upc, setUpc] = useState(String(product["upc"] || ""));
   const [ean, setEan] = useState(String(product["ean"] || ""));
@@ -343,6 +347,11 @@ function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (upd
     setSaving(true);
     try {
       const updates: Record<string, unknown> = {};
+      const origPrice = product.regular_price || product.price || "";
+      if (regularPrice !== origPrice) updates.regular_price = regularPrice;
+      if (salePrice !== (product.sale_price || "")) updates.sale_price = salePrice || "";
+      if (stockStatus !== product.stock_status) updates.stock_status = stockStatus;
+      if (sku !== (product.sku || "")) updates.sku = sku;
       updates.meta_data = [
         { key: "gtin", value: gtin },
         { key: "upc", value: upc },
@@ -357,6 +366,43 @@ function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (upd
       setSaving(false);
     }
   }
+
+  const viewMode = (
+    <>
+      <InfoRow label="Price" value={`R${product.price || product.regular_price || "0.00"}`} />
+      {product.sale_price && <InfoRow label="Sale Price" value={`R${product.sale_price}`} />}
+      <InfoRow label="Status" value={product.status} />
+      <InfoRow label="Stock" value={product.stock_status} />
+      <InfoRow label="SKU" value={product.sku || "N/A"} />
+      {gtin && <InfoRow label="GTIN" value={gtin} />}
+      {upc && <InfoRow label="UPC" value={upc} />}
+      {ean && <InfoRow label="EAN" value={ean} />}
+      <InfoRow label="Tags" value={tags || "None"} />
+      <InfoRow label="Categories" value={product.categories?.map((c) => c.name).join(", ") || "None"} />
+      <InfoRow label="Attributes" value={product.attributes?.map((a) => a.name).join(", ") || "None"} />
+      <InfoRow label="Images" value={`${product.images?.length || 0} image(s)`} />
+      <InfoRow label="Featured" value={product.featured ? "Yes" : "No"} />
+    </>
+  );
+
+  const editMode = (
+    <>
+      <EditableRow label="Price (R)" value={regularPrice} onChange={setRegularPrice} type="number" />
+      <EditableRow label="Sale Price (R)" value={salePrice} onChange={setSalePrice} type="number" />
+      <SelectRow label="Stock" value={stockStatus} onChange={setStockStatus}
+        options={[
+          { value: "instock", label: "In Stock" },
+          { value: "outofstock", label: "Out of Stock" },
+          { value: "onbackorder", label: "On Backorder" },
+        ]}
+      />
+      <EditableRow label="SKU" value={sku} onChange={setSku} />
+      <EditableRow label="GTIN" value={gtin} onChange={setGtin} />
+      <EditableRow label="UPC" value={upc} onChange={setUpc} />
+      <EditableRow label="EAN" value={ean} onChange={setEan} />
+      <EditableRow label="Tags" value={tags} onChange={setTags} />
+    </>
+  );
 
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
@@ -374,31 +420,25 @@ function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (upd
         )}
       </div>
       <div className="space-y-2 text-sm">
-        <InfoRow label="Price" value={`R${product.price || product.regular_price || "0.00"}`} />
-        {product.sale_price && <InfoRow label="Sale Price" value={`R${product.sale_price}`} />}
-        <InfoRow label="Status" value={product.status} />
-        <InfoRow label="Stock" value={product.stock_status} />
-        <InfoRow label="SKU" value={product.sku || "N/A"} />
-        {editing ? (
-          <>
-            <EditableRow label="GTIN" value={gtin} onChange={setGtin} />
-            <EditableRow label="UPC" value={upc} onChange={setUpc} />
-            <EditableRow label="EAN" value={ean} onChange={setEan} />
-            <EditableRow label="Tags" value={tags} onChange={setTags} />
-          </>
-        ) : (
-          <>
-            {gtin && <InfoRow label="GTIN" value={gtin} />}
-            {upc && <InfoRow label="UPC" value={upc} />}
-            {ean && <InfoRow label="EAN" value={ean} />}
-            <InfoRow label="Tags" value={tags || "None"} />
-          </>
-        )}
-        <InfoRow label="Categories" value={product.categories?.map((c) => c.name).join(", ") || "None"} />
-        <InfoRow label="Attributes" value={product.attributes?.map((a) => a.name).join(", ") || "None"} />
-        <InfoRow label="Images" value={`${product.images?.length || 0} image(s)`} />
-        <InfoRow label="Featured" value={product.featured ? "Yes" : "No"} />
+        {editing ? editMode : viewMode}
       </div>
+    </div>
+  );
+}
+
+function SelectRow({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-gray-500">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-[60%] rounded border border-gray-700 bg-gray-800 px-2 py-1 text-right text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -412,12 +452,12 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EditableRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function EditableRow({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-gray-500">{label}</span>
       <input
-        type="text"
+        type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className="w-[60%] rounded border border-gray-700 bg-gray-800 px-2 py-1 text-right text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
@@ -519,7 +559,12 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [newName, setNewName] = useState("");
+  const [bulkUrls, setBulkUrls] = useState("");
+  const [bulkMode, setBulkMode] = useState(false);
   const [working, setWorking] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function apiCall(action: string, data: Record<string, unknown> = {}) {
     setWorking(Date.now());
@@ -533,16 +578,72 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
         const err = await res.json();
         throw new Error(err.error || "Failed");
       }
-      toast.success(`Image ${action === "add" ? "added" : action === "remove" ? "removed" : "reordered"}`);
+      const label = action === "add" || action === "bulk-add" ? "added" : action === "remove" ? "removed" : "reordered";
+      toast.success(`Image ${label}`);
       setNewUrl("");
       setNewName("");
+      setBulkUrls("");
       setAdding(false);
+      setBulkMode(false);
       onRefresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setWorking(null);
     }
+  }
+
+  async function uploadFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files are supported");
+      return;
+    }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Upload failed");
+      }
+      const data = await res.json();
+      await apiCall("add", { imageUrl: data.url, imageName: file.name.replace(/\.[^/.]+$/, "") });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length === 0) return;
+    setAdding(true);
+    for (const file of files) {
+      await uploadFile(file);
+    }
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setAdding(true);
+    for (const file of files) {
+      await uploadFile(file);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleBulkAdd() {
+    const urls = bulkUrls.split("\n").map(l => l.trim()).filter(l => l.startsWith("http"));
+    if (urls.length === 0) {
+      toast.error("Paste at least one URL starting with https://");
+      return;
+    }
+    await apiCall("bulk-add", { imageUrls: urls });
   }
 
   function moveImage(fromIdx: number, direction: "up" | "down") {
@@ -570,35 +671,81 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
 
       {adding && (
         <div className="mb-4 space-y-2 rounded-lg border border-blue-800 bg-blue-900/20 p-3">
-          <input
-            type="text"
-            placeholder="Image URL (https://...)"
-            value={newUrl}
-            onChange={(e) => setNewUrl(e.target.value)}
-            className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-          />
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Image name (optional)"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
-            />
-            <button
-              onClick={() => apiCall("add", { imageUrl: newUrl, imageName: newName })}
-              disabled={!newUrl.trim() || working !== null}
-              className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {working ? "Adding..." : "Add"}
-            </button>
-            <button
-              onClick={() => { setAdding(false); setNewUrl(""); setNewName(""); }}
-              className="rounded-lg bg-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-600"
-            >
-              Cancel
-            </button>
-          </div>
+          {!bulkMode ? (
+            <>
+              {/* Drag & Drop Zone */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
+                  dragOver ? "border-blue-400 bg-blue-500/10" : "border-gray-600 hover:border-gray-500"
+                }`}
+              >
+                <Upload className={`mb-2 h-6 w-6 ${dragOver ? "text-blue-400" : "text-gray-500"}`} />
+                <p className="text-sm text-gray-400">
+                  {uploading ? "Uploading..." : "Drop images here or click to browse"}
+                </p>
+                <p className="text-xs text-gray-500">JPEG, PNG, GIF, WebP</p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </div>
+
+              {/* URL Input */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Or paste image URL (https://...)"
+                  value={newUrl}
+                  onChange={(e) => setNewUrl(e.target.value)}
+                  className="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+                />
+                <button
+                  onClick={() => apiCall("add", { imageUrl: newUrl, imageName: newName })}
+                  disabled={!newUrl.trim() || working !== null}
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {working ? "Adding..." : "Add URL"}
+                </button>
+              </div>
+              <button onClick={() => setBulkMode(true)} className="text-xs text-blue-400 hover:text-blue-300">Paste multiple URLs instead</button>
+            </>
+          ) : (
+            <>
+              <textarea
+                placeholder="Paste image URLs, one per line&#10;https://..."
+                value={bulkUrls}
+                onChange={(e) => setBulkUrls(e.target.value)}
+                rows={5}
+                className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleBulkAdd}
+                  disabled={!bulkUrls.trim() || working !== null}
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {working ? "Adding..." : `Add All (${bulkUrls.split("\n").filter(l => l.trim().startsWith("http")).length || 0})`}
+                </button>
+                <button onClick={() => setBulkMode(false)} className="rounded-lg bg-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-600">
+                  Single URL
+                </button>
+              </div>
+            </>
+          )}
+          <button
+            onClick={() => { setAdding(false); setNewUrl(""); setNewName(""); setBulkUrls(""); setBulkMode(false); }}
+            className="text-xs text-gray-500 hover:text-gray-400"
+          >
+            Cancel
+          </button>
         </div>
       )}
 
@@ -646,7 +793,16 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
           ))}
         </div>
       ) : (
-        <p className="text-sm text-gray-500">No images. Click "Add Image" to add one by URL.</p>
+        <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-700 p-8">
+          <ImageIcon className="mb-2 h-8 w-8 text-gray-600" />
+          <p className="text-sm text-gray-500">No images yet.</p>
+          <button
+            onClick={() => setAdding(true)}
+            className="mt-2 text-xs text-blue-400 hover:text-blue-300"
+          >
+            Click "Add Image" to upload from your computer, paste a URL, or bulk-import from FirstShop
+          </button>
+        </div>
       )}
     </div>
   );
