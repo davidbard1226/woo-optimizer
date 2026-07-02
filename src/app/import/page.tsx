@@ -58,6 +58,7 @@ export default function ImportPage() {
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [batchSize, setBatchSize] = useState(20);
   const [skipCompleted, setSkipCompleted] = useState(true);
+  const [nameMatch, setNameMatch] = useState(true);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [onlyIssues, setOnlyIssues] = useState(false);
   const cancelledRef = useRef(false);
@@ -95,7 +96,7 @@ export default function ImportPage() {
         const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batchSize, offset: currentOffset, resume: skipCompleted }),
+          body: JSON.stringify({ batchSize, offset: currentOffset, resume: skipCompleted, nameMatch }),
         });
 
         if (!res.ok) {
@@ -118,7 +119,7 @@ export default function ImportPage() {
 
     setImporting(false);
     toast.success(mode === "images" ? "Image import complete!" : "Product creation complete!");
-  }, [batchSize, mode]);
+  }, [batchSize, mode, nameMatch]);
 
   function cancelImport() {
     cancelledRef.current = true;
@@ -214,6 +215,7 @@ export default function ImportPage() {
           <p className="mb-4 text-sm text-gray-400">
             Matches products by SKU and pushes FirstShop images to your existing WooCommerce products.
             Products that already have images will be overwritten with the FirstShop images.
+            When enabled, name-based fallback searches by product name for non-matching SKUs.
           </p>
         </div>
       ) : (
@@ -264,6 +266,17 @@ export default function ImportPage() {
               <span className="text-xs text-blue-400">({productStats.completed} done, {productStats.remaining} remaining)</span>
             )}
           </label>
+          {mode === "images" && (
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-400">
+              <input
+                type="checkbox"
+                checked={nameMatch}
+                onChange={(e) => setNameMatch(e.target.checked)}
+                className="rounded border-gray-600 bg-gray-800"
+              />
+              Fall back to name-based matching when SKU not found
+            </label>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
