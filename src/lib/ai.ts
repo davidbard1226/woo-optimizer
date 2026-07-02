@@ -22,32 +22,36 @@ const MODEL_FALLBACK_CHAIN = [
 function cleanAIOutput(text: string): string {
   // Remove <think> blocks (including nested, multiline)
   let clean = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  // Also remove partial think blocks (opened but not closed)
   clean = clean.replace(/<think>[\s\S]*/gi, "").trim();
-  // Remove **bold** wrapper lines that are just labels like **Product Title:**
   clean = clean.replace(/^\*\*[^*]+:\*\*\s*/gm, "");
-  // Remove lines that are clearly reasoning/meta/commentary
+  // Remove lines that are instructions/rules/thinking leaked into output
   const badPatterns = [
-    /^we need to/i, /^let's/i, /^i need to/i, /^i should/i, /^first,/i,
-    /^the user/i, /^hmm/i, /^okay/i, /^so we/i, /^well,/i, /^thinking/i,
-    /^reasoning/i, /^analysis/i, /^step \d/i, /^make sure/i, /^make \d/i,
-    /^each line/i, /^that's \d/i, /^possibly include/i, /^we have product/i,
-    /^output only/i, /^provide exactly/i, /^no extra/i, /^just output/i,
-    /^must output/i, /^must be/i, /^let's output/i, /^let's produce/i,
-    /^we can follow/i, /^we can produce/i, /^here are/i, /^here is/i,
-    /^example shows/i, /^example:/i, /^so we can/i, /^so we need/i,
-    /^make 5/i, /^provide 5/i, /^note:/i, /^important:/i, /^tip:/i,
-    /^as an ai/i, /^as a helpful/i, /^i'm an/i, /^i am an/i,
-    /^based on/i, /^given the/i, /^for the product/i, /^for this product/i,
-    /^this product/i, /^the product/i, /^this is/i, /^the following/i,
-    /^please note/i, /^bear in mind/i, /^keep in mind/i,
-    /^since the/i, /^given that/i, /^considering/i, /^taking into/i,
-    /^we can see/i, /^we can tell/i, /^it appears/i, /^it seems/i,
-    /^therefore/i, /^thus/i, /^consequently/i, /^in conclusion/i,
-    /^to summarize/i, /^in summary/i, /^overall/i, /^in short/i,
-    /^briefly/i, /^moving on/i, /^next,/i, /^finally,/i,
+    /^we need/i, /^let'?s /i, /^i need/i, /^i should/i, /^i will/i,
+    /^first[,:]?\s/i, /^the user/i, /^hmm/i, /^okay[,:]?\s/i, /^so we/i,
+    /^well[,:]?\s/i, /^thinking/i, /^reasoning/i, /^analysis/i,
+    /^step \d/i, /^make sure/i, /^each line/i, /^possibly include/i,
+    /^we have product/i, /^output only/i, /^provide exactly/i,
+    /^no extra/i, /^just output/i, /^must output/i, /^must be/i,
+    /^let'?s output/i, /^let'?s produce/i, /^we can follow/i,
+    /^we can produce/i, /^here are/i, /^here is/i, /^example shows/i,
+    /^so we can/i, /^so we need/i, /^make 5/i, /^provide 5/i,
+    /^note:/i, /^important:/i, /^tip:/i, /^as an ai/i, /^as a helpful/i,
+    /^i'm an/i, /^i am an/i, /^based on/i, /^given the/i,
+    /^for the product/i, /^for this product/i, /^this product/i,
+    /^the product/i, /^this is/i, /^the following/i, /^please note/i,
+    /^bear in mind/i, /^keep in mind/i, /^since the/i, /^given that/i,
+    /^considering/i, /^taking into/i, /^we can see/i, /^we can tell/i,
+    /^it appears/i, /^it seems/i, /^therefore[,:]?\s/i, /^thus[,:]?\s/i,
+    /^consequently/i, /^in conclusion/i, /^to summarize/i,
+    /^in summary/i, /^overall[,:]?\s/i, /^in short/i, /^briefly/i,
+    /^moving on/i, /^next[,:]?\s/i, /^finally[,:]?\s/i,
     /^title:/i, /^description:/i, /^short description:/i, /^tags:/i,
-    /^seo/i, /^meta/i,
+    /^seo/i, /^meta/i, /^rules?:/i, /^instructions?:/i,
+    /^guidelines?:/i, /^constraints?:/i, /^requirements?:/i,
+    /^need.*char/i, /^under \d+ char/i, /^\d+-\d+ (sentence|word|bullet)/i,
+    /^plain text/i, /^no html/i, /^no markdown/i, /^no formatting/i,
+    /^one per line/i, /^max \d+/i, /^keep under/i, /^include the/i,
+    /^output only/i, /^just the/i, /^use keywords/i,
   ];
   const lines = clean.split("\n");
   const result: string[] = [];
@@ -151,17 +155,15 @@ Current Short Description: ${cleanShortDesc}`.trim();
 
 export async function generateTitle(product: WCProduct): Promise<string> {
   const context = buildProductContext(product);
-  const response = await callAI(`Generate an SEO-optimized product title (max 70 characters) for:
+  const response = await callAI(`Output only the SEO title for this product:
 
 ${context}
 
-Rules:
-- Include the brand and key product name
-- Include important specs (capacity, size, compatibility)
-- Use keywords customers search for on Google
-- Keep under 70 characters
-- No quotes, no labels, just the title`, 100);
-  return response.replace(/^["']|["']$/g, "").trim();
+Rules: include brand, key specs, SEO keywords. Max 70 chars. No explanations. No labels. Just the title.`, 100);
+  // Strip any remaining label-like prefixes
+  let clean = response.replace(/^(title|product|name|seo title|output|result):\s*/i, "").trim();
+  clean = clean.replace(/^["']|["']$/g, "").trim();
+  return clean;
 }
 
 export async function generateDescription(product: WCProduct): Promise<string> {
@@ -181,17 +183,16 @@ Rules:
 }
 
 export async function generateShortDescription(product: WCProduct, bulletPoints: string[] = []): Promise<string> {
+  const bullets = bulletPoints.slice(0, 5);
+  if (bullets.length > 0) {
+    return bullets.map((b) => "• " + b).join("\n");
+  }
   const context = buildProductContext(product);
-  const summary = await callAI(`Write a 1-2 sentence product summary for:
+  const summary = await callAI(`List key features for:
 
 ${context}
 
-Plain text only. No HTML. Under 300 characters. Include the key selling point.`, 256);
-
-  const bullets = bulletPoints.slice(0, 5);
-  if (bullets.length > 0) {
-    return summary + "\n\n" + bullets.map((b) => "• " + b).join("\n");
-  }
+Output only bullet points, one per line, each starting with •. Max 5. No sentences. No labels.`, 256);
   return summary;
 }
 
