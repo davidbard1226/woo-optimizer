@@ -88,7 +88,7 @@ export async function fetchProducts(params: {
   if (params.page) searchParams.set("page", String(params.page));
   searchParams.set("per_page", String(params.per_page || 20));
   if (params.search) searchParams.set("search", params.search);
-  if (params.status) searchParams.set("status", params.status);
+  if (params.status && params.status !== "any") searchParams.set("status", params.status);
   if (params.orderby) searchParams.set("orderby", params.orderby);
   if (params.order) searchParams.set("order", params.order);
 
