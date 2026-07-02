@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { WCProduct, AIGeneratedContent, HealthScore as HealthScoreType } from "@/lib/types";
 import { calculateHealthScore } from "@/lib/health-score";
 import HealthScoreComponent from "@/components/HealthScore";
-import { ArrowLeft, Loader2, ExternalLink, Check, Image as ImageIcon, Plus, Trash2, ArrowUp, ArrowDown, Upload } from "lucide-react";
+import { ArrowLeft, Loader2, ExternalLink, Check, Image as ImageIcon, Plus, Trash2, ArrowUp, ArrowDown, Upload, FileText } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
@@ -25,15 +25,14 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
-  const [activeTab, setActiveTab] = useState<"current" | "ai">("current");
   const [selectedFields, setSelectedFields] = useState<FieldOption[]>([
     { key: "name", label: "Product Title", enabled: true },
-    { key: "shortDescription", label: "Short Description", enabled: true },
+    { key: "shortDescription", label: "Short Description + Bullets", enabled: true },
     { key: "description", label: "Full Description", enabled: true },
-    { key: "bulletPoints", label: "Bullet Points", enabled: true },
     { key: "seo", label: "SEO (Meta Title + Description)", enabled: true },
     { key: "tags", label: "Tags", enabled: true },
   ]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (productId) loadProduct();
@@ -87,18 +86,15 @@ export default function ProductDetailPage() {
             if (generated.name) filtered.name = generated.name;
             break;
           case "shortDescription":
-            filtered.shortDescription = generated.shortDescription;
+            filtered.short_description = generated.shortDescription;
             break;
           case "description":
             filtered.description = generated.description;
             break;
-          case "bulletPoints":
-            // Bullets are embedded in description
-            break;
           case "seo":
-            filtered.metaTitle = generated.metaTitle;
-            filtered.metaDescription = generated.metaDescription;
-            filtered.focusKeyword = generated.focusKeyword;
+            filtered.meta_title = generated.metaTitle;
+            filtered.meta_description = generated.metaDescription;
+            filtered.focus_keyword = generated.focusKeyword;
             break;
           case "tags":
             if (generated.tags) filtered.tags = generated.tags;
@@ -142,6 +138,25 @@ export default function ProductDetailPage() {
     await loadProduct();
   }
 
+  async function handlePdfUpload(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    try {
+      const res = await fetch("/api/upload/pdf", { method: "POST", body: fd });
+      if (!res.ok) {
+        const txt = await res.text();
+        let msg = txt;
+        try { const j = JSON.parse(txt); msg = j.error || msg; } catch {}
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      await handleManualSave({ description: data.text });
+      toast.success("PDF content applied as full description!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "PDF upload failed");
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -180,103 +195,108 @@ export default function ProductDetailPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Tabs */}
-          <div className="flex gap-2">
-            <button onClick={() => setActiveTab("current")}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${activeTab === "current" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
-              Current Content
-            </button>
-            <button onClick={() => setActiveTab("ai")}
-              className={`rounded-lg px-4 py-2 text-sm font-medium ${activeTab === "ai" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
-              AI Generator
-            </button>
+
+          {/* Images Section (always visible) */}
+          <ImageManager product={product} onRefresh={loadProduct} onInsertInDesc={(url) => {
+            navigator.clipboard.writeText(`<img src="${url}" alt="" />`);
+            toast.success("Image HTML copied to clipboard. Paste it into the description.");
+          }} />
+
+          {/* Current Content */}
+          <div className="space-y-4">
+            <ContentBlock title="Short Description" content={product.short_description} empty="No short description set" />
+            <ContentBlock title="Full Description" content={product.description} empty="No description set" />
+
+            {/* PDF Upload for Full Description */}
+            <div className="rounded-xl border border-dashed border-gray-700 bg-gray-900/50 p-4">
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-400">
+                <FileText className="h-4 w-4" /> Upload PDF as Full Description
+              </h3>
+              <p className="mb-3 text-xs text-gray-500">
+                Upload a product spec sheet PDF. The text will be extracted and set as the full description.
+              </p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (f) { await handlePdfUpload(f); e.target.value = ""; }
+                }}
+                className="block w-full text-sm text-gray-400 file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-sm file:text-white hover:file:bg-blue-700"
+              />
+            </div>
           </div>
 
-          {/* Current Content Tab */}
-          {activeTab === "current" && (
-            <div className="space-y-4">
-              <ContentBlock title="Description" content={product.description} empty="No description set" />
-              <ContentBlock title="Short Description" content={product.short_description} empty="No short description set" />
-
-              {/* Images Section */}
-              <ImageManager product={product} onRefresh={loadProduct} />
-            </div>
-          )}
-
-          {/* AI Generator Tab */}
-          {activeTab === "ai" && (
-            <div className="space-y-4">
-              {/* Generate Button */}
+          {/* AI Generator */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-white">AI Content Generator</h2>
               <button onClick={handleGenerate} disabled={generating}
                 className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {generating ? "Generating all content..." : "Generate AI Content"}
+                {generating ? "Generating..." : "Generate AI Content"}
               </button>
-
-              {generated?.modelUsed && (
-                <p className="text-xs text-gray-500">
-                  Generated using <span className="text-gray-400">{generated.modelUsed}</span>
-                </p>
-              )}
-
-              {/* Field Selection + Apply */}
-              {generated && (
-                <div className="rounded-xl border border-green-800 bg-green-900/20 p-4">
-                  <h3 className="mb-3 text-sm font-semibold text-green-400">Select fields to push to WooCommerce:</h3>
-                  <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {selectedFields.map((field) => (
-                      <label key={field.key} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${field.enabled ? "border-green-600 bg-green-600/10 text-green-400" : "border-gray-700 bg-gray-800 text-gray-500"}`}>
-                        <input type="checkbox" checked={field.enabled} onChange={() => toggleField(field.key)} className="sr-only" />
-                        <div className={`flex h-4 w-4 items-center justify-center rounded border ${field.enabled ? "border-green-500 bg-green-500" : "border-gray-600"}`}>
-                          {field.enabled && <Check className="h-3 w-3 text-white" />}
-                        </div>
-                        {field.label}
-                      </label>
-                    ))}
-                  </div>
-                  <button onClick={handleApplySelected} disabled={applying}
-                    className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
-                    {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                    {applying ? "Pushing to Store..." : "Apply Selected to WooCommerce"}
-                  </button>
-                </div>
-              )}
-
-              {/* Generated Content Preview */}
-              {generated && (
-                <div className="space-y-4">
-                  {generated.name && (
-                    <PreviewSection title="Product Title">
-                      <p className="text-sm text-white font-medium">{generated.name}</p>
-                    </PreviewSection>
-                  )}
-                  <PreviewSection title="Short Description">
-                    <p className="text-sm text-gray-300">{generated.shortDescription}</p>
-                  </PreviewSection>
-                  <PreviewSection title="Full Description">
-                    <div className="prose prose-invert prose-sm max-w-none text-gray-400" dangerouslySetInnerHTML={{ __html: generated.description }} />
-                  </PreviewSection>
-                  {generated.bulletPoints.length > 0 && (
-                    <PreviewSection title="Bullet Points">
-                      <ul className="space-y-1">{generated.bulletPoints.map((bp, i) => <li key={i} className="text-sm text-gray-300">• {bp}</li>)}</ul>
-                    </PreviewSection>
-                  )}
-                  <PreviewSection title="SEO Metadata">
-                    <div className="space-y-1 text-sm">
-                      <p><span className="text-gray-500">Title:</span> <span className="text-gray-300">{generated.metaTitle}</span></p>
-                      <p><span className="text-gray-500">Description:</span> <span className="text-gray-300">{generated.metaDescription}</span></p>
-                      <p><span className="text-gray-500">Keyword:</span> <span className="text-gray-300">{generated.focusKeyword}</span></p>
-                    </div>
-                  </PreviewSection>
-                  {generated.tags && generated.tags.length > 0 && (
-                    <PreviewSection title="Tags">
-                      <div className="flex flex-wrap gap-2">{generated.tags.map((tag, i) => <span key={i} className="rounded-full bg-blue-500/20 px-3 py-1 text-xs text-blue-400">{tag}</span>)}</div>
-                    </PreviewSection>
-                  )}
-                </div>
-              )}
             </div>
-          )}
+
+            {generated?.modelUsed && (
+              <p className="text-xs text-gray-500">
+                Generated using <span className="text-gray-400">{generated.modelUsed}</span>
+              </p>
+            )}
+
+            {/* Field Selection + Apply */}
+            {generated && (
+              <div className="rounded-xl border border-green-800 bg-green-900/20 p-4">
+                <h3 className="mb-3 text-sm font-semibold text-green-400">Select fields to push to WooCommerce:</h3>
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {selectedFields.map((field) => (
+                    <label key={field.key} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${field.enabled ? "border-green-600 bg-green-600/10 text-green-400" : "border-gray-700 bg-gray-800 text-gray-500"}`}>
+                      <input type="checkbox" checked={field.enabled} onChange={() => toggleField(field.key)} className="sr-only" />
+                      <div className={`flex h-4 w-4 items-center justify-center rounded border ${field.enabled ? "border-green-500 bg-green-500" : "border-gray-600"}`}>
+                        {field.enabled && <Check className="h-3 w-3 text-white" />}
+                      </div>
+                      {field.label}
+                    </label>
+                  ))}
+                </div>
+                <button onClick={handleApplySelected} disabled={applying}
+                  className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
+                  {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {applying ? "Pushing to Store..." : "Apply Selected to WooCommerce"}
+                </button>
+              </div>
+            )}
+
+            {/* Generated Content Preview */}
+            {generated && (
+              <div className="space-y-4">
+                {generated.name && (
+                  <PreviewSection title="Product Title">
+                    <p className="text-sm text-white font-medium">{generated.name}</p>
+                  </PreviewSection>
+                )}
+                <PreviewSection title="Short Description + Bullet Points">
+                  <div className="text-sm text-gray-300 whitespace-pre-line">{generated.shortDescription}</div>
+                </PreviewSection>
+                <PreviewSection title="Full Description">
+                  <div className="prose prose-invert prose-sm max-w-none text-gray-400" dangerouslySetInnerHTML={{ __html: generated.description }} />
+                </PreviewSection>
+                <PreviewSection title="SEO Metadata">
+                  <div className="space-y-1 text-sm">
+                    <p><span className="text-gray-500">Title:</span> <span className="text-gray-300">{generated.metaTitle}</span></p>
+                    <p><span className="text-gray-500">Description:</span> <span className="text-gray-300">{generated.metaDescription}</span></p>
+                    <p><span className="text-gray-500">Keyword:</span> <span className="text-gray-300">{generated.focusKeyword}</span></p>
+                  </div>
+                </PreviewSection>
+                {generated.tags && generated.tags.length > 0 && (
+                  <PreviewSection title="Tags">
+                    <div className="flex flex-wrap gap-2">{generated.tags.map((tag, i) => <span key={i} className="rounded-full bg-blue-500/20 px-3 py-1 text-xs text-blue-400">{tag}</span>)}</div>
+                  </PreviewSection>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar */}
@@ -555,7 +575,11 @@ function RecentChanges({ productId, onUndo }: { productId: number; onUndo: () =>
   );
 }
 
-function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: () => void }) {
+function ImageManager({ product, onRefresh, onInsertInDesc }: {
+  product: WCProduct;
+  onRefresh: () => void;
+  onInsertInDesc: (url: string) => void;
+}) {
   const [adding, setAdding] = useState(false);
   const [newUrl, setNewUrl] = useState("");
   const [newName, setNewName] = useState("");
@@ -575,8 +599,10 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
         body: JSON.stringify({ productId: product.id, action, ...data }),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed");
+        const text = await res.text();
+        let msg = text;
+        try { const j = JSON.parse(text); msg = j.error || msg; } catch {}
+        throw new Error(msg);
       }
       const label = action === "add" || action === "bulk-add" ? "added" : action === "remove" ? "removed" : "reordered";
       toast.success(`Image ${label}`);
@@ -604,8 +630,10 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
       fd.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Upload failed");
+        const text = await res.text();
+        let msg = text;
+        try { const j = JSON.parse(text); msg = j.error || msg; } catch {}
+        throw new Error(msg);
       }
       const data = await res.json();
       await apiCall("add", { imageUrl: data.url, imageName: file.name.replace(/\.[^/.]+$/, "") });
@@ -673,7 +701,6 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
         <div className="mb-4 space-y-2 rounded-lg border border-blue-800 bg-blue-900/20 p-3">
           {!bulkMode ? (
             <>
-              {/* Drag & Drop Zone */}
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -698,7 +725,6 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
                 />
               </div>
 
-              {/* URL Input */}
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -757,9 +783,13 @@ function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: (
               <div className="absolute left-1 top-1 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] text-white">
                 #{i + 1}
               </div>
-              {!img.alt && (
-                <div className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] text-white">!</div>
-              )}
+              <button
+                onClick={() => onInsertInDesc(img.src)}
+                className="absolute right-1 top-1 hidden rounded bg-gray-800/80 px-1.5 py-0.5 text-[10px] text-blue-400 group-hover:block hover:text-blue-300"
+                title="Copy image HTML for pasting into description"
+              >
+                &lt;img&gt;
+              </button>
               <div className="absolute inset-0 flex items-center justify-center gap-1 rounded-lg bg-black/70 opacity-0 transition-opacity group-hover:opacity-100">
                 {i > 0 && (
                   <button
