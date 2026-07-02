@@ -100,14 +100,25 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const images = productData.images.map((src) => ({ src }));
+        const allImages = productData.images.slice(0, 5);
+        const images = allImages.map((src) => ({ src }));
+
+        // Embed first 2-3 images in description HTML
+        const imageHtml = allImages.slice(0, 3).map((src) =>
+          `<img src="${src}" alt="${productData.name}" style="max-width:100%;height:auto;margin:12px 0" />`
+        ).join("\n");
+
+        const firstP = productData.description.indexOf("</p>");
+        const descWithImages = firstP !== -1
+          ? productData.description.slice(0, firstP + 4) + "\n" + imageHtml + "\n" + productData.description.slice(firstP + 4)
+          : imageHtml + "\n" + productData.description;
 
         const newProduct = await createProduct({
           name: productData.name,
           type: "simple",
           sku,
           regular_price: String(productData.regularPrice),
-          description: productData.description,
+          description: descWithImages,
           short_description: productData.shortDescription,
           stock_status: productData.stockStatus,
           categories: productData.categories.split(",").map((c) => ({ name: c.trim() })),
