@@ -10,7 +10,7 @@ export default function SettingsPage() {
     wc_consumer_key: "",
     wc_consumer_secret: "",
     openrouter_api_key: "",
-    ai_model: "google/gemini-2.0-flash-exp:free",
+    ai_model: "nvidia/nemotron-3-nano-30b-a3b:free",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -37,7 +37,7 @@ export default function SettingsPage() {
         wc_consumer_key: data.wc_consumer_key || "",
         wc_consumer_secret: data.wc_consumer_secret || "",
         openrouter_api_key: data.openrouter_api_key || "",
-        ai_model: data.ai_model || "google/gemini-2.0-flash-exp:free",
+        ai_model: data.ai_model || "nvidia/nemotron-3-nano-30b-a3b:free",
       }));
     } catch {
       // Use defaults
@@ -118,9 +118,10 @@ export default function SettingsPage() {
   }
 
   const freeModels = [
-    { id: "google/gemini-2.0-flash-exp:free", name: "Gemini 2.0 Flash (Recommended)" },
+    { id: "nvidia/nemotron-3-nano-30b-a3b:free", name: "Nemotron 3 Nano 30B (Recommended)" },
     { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B" },
-    { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super 120B" },
+    { id: "qwen/qwen-2.5-7b-instruct:free", name: "Qwen 2.5 7B" },
+    { id: "mistralai/mistral-7b-instruct:free", name: "Mistral 7B" },
     { id: "google/gemini-2.0-flash-exp:free", name: "Gemini 2.0 Flash (Free)" },
     { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (Free)" },
     { id: "google/gemma-4-26b-a4b-it:free", name: "Google Gemma 4 26B" },
