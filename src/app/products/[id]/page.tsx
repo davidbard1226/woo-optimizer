@@ -826,6 +826,16 @@ function ImageManager({ product, onRefresh, onInsertInDesc }: {
         </div>
       )}
 
+      {images.length > 0 && images.some((img) => !img.alt) && (
+        <button
+          onClick={() => apiCall("fill-alt", {})}
+          disabled={working !== null}
+          className="mb-3 rounded bg-amber-600/20 px-3 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-600/30"
+        >
+          Fill missing alt text with product name
+        </button>
+      )}
+
       {images.length > 0 ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
           {images.map((img, i) => (
