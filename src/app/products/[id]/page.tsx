@@ -589,6 +589,45 @@ function ImageManager({ product, onRefresh, onInsertInDesc }: {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Optimistic local state — mirrors product.images but updates instantly
+  const [localImages, setLocalImages] = useState<{ id: number; src: string; name: string; alt: string; position: number }[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (product.images) {
+      setLocalImages(product.images.map((img, i) => ({
+        id: img.id,
+        src: img.src,
+        name: img.name || "",
+        alt: img.alt || "",
+        position: img.position ?? i,
+      })));
+      setInitialized(true);
+    }
+  }, [product.images]);
+
+  const nextId = () => -(Date.now() + Math.floor(Math.random() * 10000));
+
+  function addImageOptimistic(src: string, name: string) {
+    const newImg = { id: nextId(), src, name, alt: "", position: localImages.length };
+    setLocalImages((prev) => {
+      const updated = [...prev, newImg];
+      return updated.map((img, i) => ({ ...img, position: i }));
+    });
+  }
+
+  function removeImageOptimistic(imageId: number) {
+    setLocalImages((prev) => prev.filter((img) => img.id !== imageId).map((img, i) => ({ ...img, position: i })));
+  }
+
+  function reorderImageOptimistic(fromIdx: number, toIdx: number) {
+    setLocalImages((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIdx, 1);
+      updated.splice(toIdx, 0, moved);
+      return updated.map((img, i) => ({ ...img, position: i }));
+    });
+  }
 
   async function apiCall(action: string, data: Record<string, unknown> = {}) {
     setWorking(Date.now());
@@ -609,10 +648,12 @@ function ImageManager({ product, onRefresh, onInsertInDesc }: {
       setNewUrl("");
       setNewName("");
       setBulkUrls("");
-      setAdding(false);
       setBulkMode(false);
+      if (action !== "reorder") setAdding(false);
       onRefresh();
     } catch (err) {
+      // On error, revert by refreshing
+      onRefresh();
       toast.error(err instanceof Error ? err.message : "Failed");
     } finally {
       setWorking(null);
@@ -624,6 +665,7 @@ function ImageManager({ product, onRefresh, onInsertInDesc }: {
       toast.error("Only image files are supported");
       return;
     }
+    const name = file.name.replace(/\.[^/.]+$/, "");
     setUploading(true);
     try {
       const fd = new FormData();
@@ -636,7 +678,8 @@ function ImageManager({ product, onRefresh, onInsertInDesc }: {
         throw new Error(msg);
       }
       const data = await res.json();
-      await apiCall("add", { imageUrl: data.url, imageName: file.name.replace(/\.[^/.]+$/, "") });
+      addImageOptimistic(data.url, name);
+      await apiCall("add", { imageUrl: data.url, imageName: name });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -671,17 +714,25 @@ function ImageManager({ product, onRefresh, onInsertInDesc }: {
       toast.error("Paste at least one URL starting with https://");
       return;
     }
+    for (const url of urls) {
+      addImageOptimistic(url, "");
+    }
     await apiCall("bulk-add", { imageUrls: urls });
+  }
+
+  function handleRemove(imageId: number) {
+    removeImageOptimistic(imageId);
+    apiCall("remove", { imageId });
   }
 
   function moveImage(fromIdx: number, direction: "up" | "down") {
     const toIdx = direction === "up" ? fromIdx - 1 : fromIdx + 1;
-    const images = product.images || [];
-    if (toIdx < 0 || toIdx >= images.length) return;
-    apiCall("reorder", { imageId: images[fromIdx].id, position: toIdx });
+    if (toIdx < 0 || toIdx >= localImages.length) return;
+    reorderImageOptimistic(fromIdx, toIdx);
+    apiCall("reorder", { imageId: localImages[fromIdx].id, position: toIdx });
   }
 
-  const images = product.images || [];
+  const images = initialized ? localImages : (product.images || []);
 
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
