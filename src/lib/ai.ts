@@ -8,17 +8,15 @@ function getApiKey(): string {
 }
 
 function getModel(): string {
-  return getSetting("ai_model") || process.env.AI_MODEL || "nvidia/nemotron-3-nano-30b-a3b:free";
+  return getSetting("ai_model") || process.env.AI_MODEL || "deepseek/deepseek-chat-v3-0324:free";
 }
 
 // Fallback chain tried in order if the preferred model is rate-limited or unavailable.
-// Free OpenRouter models change frequently, so this list trades off recency vs reliability.
 const MODEL_FALLBACK_CHAIN = [
-  "nvidia/nemotron-3-nano-30b-a3b:free",
   "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.2-3b-instruct:free",
-  "qwen/qwen-2.5-7b-instruct:free",
+  "meta-llama/llama-3.1-8b-instruct:free",
   "mistralai/mistral-7b-instruct:free",
+  "qwen/qwen-2.5-7b-instruct:free",
 ];
 
 function cleanAIOutput(text: string): string {
