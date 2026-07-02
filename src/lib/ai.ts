@@ -265,9 +265,30 @@ export async function generateAll(product: WCProduct): Promise<AIGeneratedConten
 
   const shortDescription = await generateShortDescription(product, bulletPoints);
 
+  // Embed product images into the description HTML for SEO
+  const images = product.images || [];
+  let descWithImages = description;
+  if (images.length > 0) {
+    const imgTags = images
+      .slice(0, 3)
+      .map((img) => `<img src="${img.src}" alt="${img.alt || product.name}" style="max-width:100%;height:auto;margin:12px 0" />`)
+      .join("\n");
+
+    // Insert images after first paragraph
+    const firstP = descWithImages.indexOf("</p>");
+    if (firstP !== -1) {
+      descWithImages =
+        descWithImages.slice(0, firstP + 4) +
+        "\n" + imgTags + "\n" +
+        descWithImages.slice(firstP + 4);
+    } else {
+      descWithImages = imgTags + "\n" + descWithImages;
+    }
+  }
+
   return {
     name: title,
-    description,
+    description: descWithImages,
     shortDescription,
     bulletPoints,
     metaTitle: seo.metaTitle,
