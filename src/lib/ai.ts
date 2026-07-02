@@ -8,13 +8,13 @@ function getApiKey(): string {
 }
 
 function getModel(): string {
-  return getSetting("ai_model") || process.env.AI_MODEL || "deepseek/deepseek-chat-v3-0324:free";
+  return getSetting("ai_model") || process.env.AI_MODEL || "nvidia/nemotron-3-super-120b-a12b:free";
 }
 
 // Fallback chain tried in order if the preferred model is rate-limited or unavailable.
 const MODEL_FALLBACK_CHAIN = [
-  "google/gemini-2.0-flash-exp:free",
   "deepseek/deepseek-chat-v3-0324:free",
+  "google/gemini-2.0-flash-exp:free",
 ];
 
 function cleanAIOutput(text: string): string {
