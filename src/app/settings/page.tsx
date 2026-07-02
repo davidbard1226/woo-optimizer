@@ -118,9 +118,9 @@ export default function SettingsPage() {
   }
 
   const freeModels = [
-    { id: "nvidia/nemotron-3-nano-30b-a3b:free", name: "Nemotron 3 Nano 30B (Recommended)" },
-    { id: "nvidia/nemotron-3-super-120b-a12b:free", name: "Nemotron 3 Super 120B" },
-    { id: "nvidia/nemotron-nano-9b-v2:free", name: "Nemotron Nano 9B" },
+    { id: "deepseek/deepseek-chat-v3-0324:free", name: "DeepSeek Chat V3 (Recommended)" },
+    { id: "google/gemini-2.0-flash-exp:free", name: "Gemini 2.0 Flash (Free)" },
+    { id: "meta-llama/llama-3.1-8b-instruct:free", name: "Llama 3.1 8B (Free)" },
     { id: "google/gemma-4-26b-a4b-it:free", name: "Google Gemma 4 26B" },
     { id: "qwen/qwen3-next-80b-a3b-instruct:free", name: "Qwen 3 Next 80B" },
   ];
