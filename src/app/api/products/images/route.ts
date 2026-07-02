@@ -4,7 +4,7 @@ import { fetchProduct, updateProduct } from "@/lib/woocommerce";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { productId, action, imageId, imageUrl, imageName, position } = body;
+    const { productId, action, imageId, imageUrl, imageName, imageUrls, position } = body;
 
     if (!productId) {
       return NextResponse.json({ error: "productId required" }, { status: 400 });
@@ -41,6 +41,22 @@ export async function POST(request: NextRequest) {
         images = images.filter((img) => img.id !== imageId);
         // Re-index positions
         images.forEach((img, i) => { img.position = i; });
+        break;
+      }
+      case "bulk-add": {
+        if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
+          return NextResponse.json({ error: "imageUrls array required" }, { status: 400 });
+        }
+        for (const url of imageUrls) {
+          if (typeof url !== "string") continue;
+          images.push({
+            id: -Date.now() - Math.floor(Math.random() * 10000),
+            src: url,
+            name: "",
+            alt: "",
+            position: images.length,
+          });
+        }
         break;
       }
       case "reorder": {
