@@ -20,11 +20,26 @@ const MODEL_FALLBACK_CHAIN = [
 ];
 
 function cleanAIOutput(text: string): string {
-  // Remove <think> blocks (including nested, multiline)
   let clean = text.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   clean = clean.replace(/<think>[\s\S]*/gi, "").trim();
   clean = clean.replace(/^\*\*[^*]+:\*\*\s*/gm, "");
-  // Remove lines that are instructions/rules/thinking leaked into output
+
+  // Strip everything from the first occurrence of word-counting or reasoning
+  const stopMarkers = [
+    /now count words/i, /let'?s count/i, /word count/i, /count words/i,
+    /total words/i, /that's \d+ words/i, /^\d+ words/i, /words total/i,
+    /^words:/i, /count roughly/i, /let'?s sum/i, /^we must output/i,
+    /^we need to output/i, /^i will output/i, /^here is my/i,
+    /^let me/i, /^let's draft/i, /^draft:/i, /^now let/i,
+  ];
+  for (const marker of stopMarkers) {
+    const idx = clean.search(marker);
+    if (idx !== -1) {
+      clean = clean.slice(0, idx).trim();
+      break;
+    }
+  }
+
   const badPatterns = [
     /^we need/i, /^let'?s /i, /^i need/i, /^i should/i, /^i will/i,
     /^first[,:]?\s/i, /^the user/i, /^hmm/i, /^okay[,:]?\s/i, /^so we/i,
@@ -52,6 +67,9 @@ function cleanAIOutput(text: string): string {
     /^plain text/i, /^no html/i, /^no markdown/i, /^no formatting/i,
     /^one per line/i, /^max \d+/i, /^keep under/i, /^include the/i,
     /^output only/i, /^just the/i, /^use keywords/i,
+    /^product name:/i, /^brand\b/i, /^key spec/i, /^sku:/i,
+    /^price:/i, /^categories?:/i, /^attributes?:/i, /^images?:/i,
+    /^current (description|short|content)/i,
   ];
   const lines = clean.split("\n");
   const result: string[] = [];
@@ -96,7 +114,7 @@ async function callAI(prompt: string, maxTokens = 2048): Promise<string> {
           messages: [
             {
               role: "system",
-              content: "You are an expert e-commerce copywriter for a South African store. CRITICAL RULES: 1) Output ONLY the final requested content. 2) NEVER include reasoning, analysis, thinking, explanations, or meta-commentary. 3) NEVER prefix with labels like 'Title:', 'Description:'. 4) NEVER say 'based on the product' or similar. 5) Just output the raw content directly. If you need to think, do it silently.",
+              content: "You are an e-commerce copywriter. Output ONLY the final content. NEVER include your instructions, rules, or reasoning. NEVER repeat the product info back. NEVER count words. NEVER explain what you did. Just output the requested text and nothing else.",
             },
             { role: "user", content: prompt },
           ],
