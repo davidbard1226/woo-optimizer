@@ -8,12 +8,14 @@ function getApiKey(): string {
 }
 
 function getModel(): string {
-  return getSetting("ai_model") || process.env.AI_MODEL || "google/gemini-2.0-flash-exp:free";
+  return getSetting("ai_model") || process.env.AI_MODEL || "nvidia/nemotron-3-nano-30b-a3b:free";
 }
 
 // Fallback chain tried in order if the preferred model is rate-limited or unavailable.
 const MODEL_FALLBACK_CHAIN = [
   "meta-llama/llama-3.1-8b-instruct:free",
+  "qwen/qwen-2.5-7b-instruct:free",
+  "mistralai/mistral-7b-instruct:free",
   "nvidia/nemotron-3-super-120b-a12b:free",
 ];
 
