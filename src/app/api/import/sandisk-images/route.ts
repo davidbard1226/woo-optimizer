@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchProductBySku, updateProduct } from "@/lib/woocommerce";
+import { fetchProductBySku, fetchProducts, updateProduct } from "@/lib/woocommerce";
 import fs from "fs";
 import path from "path";
 
@@ -20,6 +20,23 @@ function loadMapping(): Record<string, string[]> | null {
   const p = dataPath("sandisk-images.json");
   if (!fs.existsSync(p)) return null;
   return JSON.parse(fs.readFileSync(p, "utf-8"));
+}
+
+function loadProductsData(): Record<string, { name: string }> | null {
+  const p = dataPath("sandisk-products.json");
+  if (!fs.existsSync(p)) return null;
+  return JSON.parse(fs.readFileSync(p, "utf-8"));
+}
+
+function nameSimilarity(a: string, b: string): number {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+  const na = norm(a), nb = norm(b);
+  if (!na || !nb) return 0;
+  let matches = 0;
+  for (let i = 0; i < Math.min(na.length, nb.length); i++) {
+    if (na[i] === nb[i]) matches++;
+  }
+  return matches / Math.max(na.length, nb.length);
 }
 
 function loadProgress(): Record<string, "matched" | "not_found" | "error"> {
@@ -68,8 +85,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const productsData = loadProductsData();
+
     const body = await request.json();
-    const { batchSize = 50, offset = 0, skus: specificSkus, resume } = body;
+    const { batchSize = 50, offset = 0, skus: specificSkus, resume, nameMatch = true } = body;
 
     let skus = specificSkus || Object.keys(mapping);
 
@@ -95,7 +114,24 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const product = await fetchProductBySku(sku);
+        let product = await fetchProductBySku(sku);
+
+        if (!product && nameMatch && productsData?.[sku]?.name) {
+          const productName = productsData[sku].name;
+          const searchTerm = productName.slice(0, 60);
+          const nameResults = await fetchProducts({ search: searchTerm, per_page: 20 });
+          if (nameResults.products.length > 0) {
+            const scored = nameResults.products.map((p) => ({
+              product: p,
+              score: nameSimilarity(productName, p.name),
+            }));
+            scored.sort((a, b) => b.score - a.score);
+            if (scored[0].score > 0.3) {
+              product = scored[0].product;
+            }
+          }
+        }
+
         if (!product) {
           progress[sku] = "not_found";
           results.push({ sku, status: "not_found" });
