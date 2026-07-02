@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
-const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads");
+const UPLOAD_DIR = path.join(process.cwd(), ".upload-cache");
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,12 +19,11 @@ export async function POST(request: NextRequest) {
     const ext = path.extname(file.name) || ".jpg";
     const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
     const buffer = Buffer.from(await file.arrayBuffer());
-    const filePath = path.join(UPLOAD_DIR, name);
-    fs.writeFileSync(filePath, buffer);
+    fs.writeFileSync(path.join(UPLOAD_DIR, name), buffer);
 
     const host = request.headers.get("host") || "localhost:3000";
     const proto = host.includes("localhost") ? "http" : "https";
-    const url = `${proto}://${host}/uploads/${name}`;
+    const url = `${proto}://${host}/api/uploads/${name}`;
 
     return NextResponse.json({ success: true, url });
   } catch (error) {
