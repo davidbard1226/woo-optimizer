@@ -14,9 +14,7 @@ function getModel(): string {
 // Fallback chain tried in order if the preferred model is rate-limited or unavailable.
 const MODEL_FALLBACK_CHAIN = [
   "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.1-8b-instruct:free",
-  "mistralai/mistral-7b-instruct:free",
-  "qwen/qwen-2.5-7b-instruct:free",
+  "deepseek/deepseek-chat-v3-0324:free",
 ];
 
 function cleanAIOutput(text: string): string {
@@ -30,7 +28,8 @@ function cleanAIOutput(text: string): string {
     /total words/i, /that's \d+ words/i, /^\d+ words/i, /words total/i,
     /^words:/i, /count roughly/i, /let'?s sum/i, /^we must output/i,
     /^we need to output/i, /^i will output/i, /^here is my/i,
-    /^let me/i, /^let's draft/i, /^draft:/i, /^now let/i,
+    /^let me/i, /^let's draft/i, /^draft:?\s*$/i, /^now let/i,
+    /^draft:\s*["']?/i, /^here is the/i,
   ];
   for (const marker of stopMarkers) {
     const idx = clean.search(marker);
