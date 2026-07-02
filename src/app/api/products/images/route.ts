@@ -24,14 +24,13 @@ export async function POST(request: NextRequest) {
         if (!imageUrl) {
           return NextResponse.json({ error: "imageUrl required" }, { status: 400 });
         }
-        const newImage = {
-          id: -Date.now(),
+        const newImage: Record<string, unknown> = {
           src: imageUrl,
           name: imageName || "",
           alt: "",
           position: images.length,
         };
-        images.push(newImage);
+        images.push(newImage as any);
         break;
       }
       case "remove": {
@@ -50,12 +49,11 @@ export async function POST(request: NextRequest) {
         for (const url of imageUrls) {
           if (typeof url !== "string") continue;
           images.push({
-            id: -Date.now() - Math.floor(Math.random() * 10000),
             src: url,
             name: "",
             alt: "",
             position: images.length,
-          });
+          } as any);
         }
         break;
       }
