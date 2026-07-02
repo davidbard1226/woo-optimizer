@@ -37,7 +37,7 @@ export default function SettingsPage() {
         wc_consumer_key: data.wc_consumer_key || "",
         wc_consumer_secret: data.wc_consumer_secret || "",
         openrouter_api_key: data.openrouter_api_key || "",
-        ai_model: data.ai_model || "deepseek/deepseek-chat-v3-0324:free",
+        ai_model: data.ai_model || "google/gemini-2.0-flash-exp:free",
       }));
     } catch {
       // Use defaults
