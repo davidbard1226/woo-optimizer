@@ -23,6 +23,7 @@ export default function ProductsPage() {
   const [sortBy, setSortBy] = useState("date");
   const [sortOrder, setSortOrder] = useState("desc");
   const [error, setError] = useState("");
+  const [searchFallback, setSearchFallback] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const searchTimer = useRef<NodeJS.Timeout | null>(null);
@@ -63,6 +64,7 @@ export default function ProductsPage() {
       setTotalPages(data.totalPages || 1);
       setTotal(data.total || 0);
       setSelected(new Set());
+      setSearchFallback(!!data.searchFallback);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load products");
       setProducts([]);
@@ -199,6 +201,13 @@ export default function ProductsPage() {
         <div className="flex items-center gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-sm text-red-400">
           <AlertCircle className="h-5 w-5 shrink-0" />
           {error}
+        </div>
+      )}
+
+      {searchFallback && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-800 bg-amber-900/20 p-4 text-sm text-amber-400">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          WooCommerce search API returned an error. Results are filtered client-side and may be incomplete.
         </div>
       )}
 
