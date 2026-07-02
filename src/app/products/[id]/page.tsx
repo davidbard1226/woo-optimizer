@@ -1,0 +1,653 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { WCProduct, AIGeneratedContent, HealthScore as HealthScoreType } from "@/lib/types";
+import { calculateHealthScore } from "@/lib/health-score";
+import HealthScoreComponent from "@/components/HealthScore";
+import { ArrowLeft, Loader2, ExternalLink, Check, Image as ImageIcon, Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import Link from "next/link";
+import toast from "react-hot-toast";
+
+interface FieldOption {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+
+export default function ProductDetailPage() {
+  const params = useParams();
+  const productId = params?.id ? parseInt(params.id as string) : 0;
+
+  const [product, setProduct] = useState<WCProduct | null>(null);
+  const [healthScore, setHealthScore] = useState<HealthScoreType | null>(null);
+  const [generated, setGenerated] = useState<AIGeneratedContent | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [activeTab, setActiveTab] = useState<"current" | "ai">("current");
+  const [selectedFields, setSelectedFields] = useState<FieldOption[]>([
+    { key: "name", label: "Product Title", enabled: true },
+    { key: "shortDescription", label: "Short Description", enabled: true },
+    { key: "description", label: "Full Description", enabled: true },
+    { key: "bulletPoints", label: "Bullet Points", enabled: true },
+    { key: "seo", label: "SEO (Meta Title + Description)", enabled: true },
+    { key: "tags", label: "Tags", enabled: true },
+  ]);
+
+  useEffect(() => {
+    if (productId) loadProduct();
+  }, [productId]);
+
+  async function loadProduct() {
+    try {
+      const res = await fetch(`/api/products/${productId}`);
+      if (!res.ok) throw new Error("Failed to load product");
+      const data = await res.json();
+      setProduct(data);
+      setHealthScore(calculateHealthScore(data));
+    } catch {
+      toast.error("Failed to load product");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleGenerate() {
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, type: "all" }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Generation failed");
+      }
+      const content = await res.json();
+      setGenerated(content);
+      toast.success("AI content generated! Review and select fields to apply.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Generation failed");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleApplySelected() {
+    if (!generated) return;
+    setApplying(true);
+    try {
+      const filtered: Record<string, unknown> = {};
+      for (const field of selectedFields) {
+        if (!field.enabled) continue;
+        switch (field.key) {
+          case "name":
+            if (generated.name) filtered.name = generated.name;
+            break;
+          case "shortDescription":
+            filtered.shortDescription = generated.shortDescription;
+            break;
+          case "description":
+            filtered.description = generated.description;
+            break;
+          case "bulletPoints":
+            // Bullets are embedded in description
+            break;
+          case "seo":
+            filtered.metaTitle = generated.metaTitle;
+            filtered.metaDescription = generated.metaDescription;
+            filtered.focusKeyword = generated.focusKeyword;
+            break;
+          case "tags":
+            if (generated.tags) filtered.tags = generated.tags;
+            break;
+        }
+      }
+
+      const res = await fetch("/api/optimize/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId, productName: product?.name, content: filtered }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Apply failed");
+      }
+      toast.success("Changes pushed to WooCommerce!");
+      await loadProduct();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Apply failed");
+    } finally {
+      setApplying(false);
+    }
+  }
+
+  function toggleField(key: string) {
+    setSelectedFields((prev) => prev.map((f) => (f.key === key ? { ...f, enabled: !f.enabled } : f)));
+  }
+
+  async function handleManualSave(updates: Record<string, unknown>) {
+    const res = await fetch("/api/products/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productId, productName: product?.name, updates }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Update failed");
+    }
+    toast.success("Changes saved to WooCommerce!");
+    await loadProduct();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="rounded-lg border border-gray-800 bg-gray-900 p-12 text-center">
+        <p className="text-gray-400">Product not found</p>
+        <Link href="/products" className="mt-3 inline-block text-sm text-blue-400 hover:underline">Back to Products</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Link href="/products" className="rounded-lg p-2 hover:bg-gray-800">
+          <ArrowLeft className="h-5 w-5 text-gray-400" />
+        </Link>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-white">{product.name}</h1>
+          <p className="text-gray-400">SKU: {product.sku || "N/A"} | ID: {product.id}</p>
+        </div>
+        {healthScore && <HealthScoreComponent score={healthScore} size="lg" />}
+        <a href={product.permalink} target="_blank" rel="noopener noreferrer"
+          className="rounded-lg border border-gray-700 bg-gray-800 p-2.5 text-gray-400 hover:text-white">
+          <ExternalLink className="h-5 w-5" />
+        </a>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Tabs */}
+          <div className="flex gap-2">
+            <button onClick={() => setActiveTab("current")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium ${activeTab === "current" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
+              Current Content
+            </button>
+            <button onClick={() => setActiveTab("ai")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium ${activeTab === "ai" ? "bg-blue-600 text-white" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
+              AI Generator
+            </button>
+          </div>
+
+          {/* Current Content Tab */}
+          {activeTab === "current" && (
+            <div className="space-y-4">
+              <ContentBlock title="Description" content={product.description} empty="No description set" />
+              <ContentBlock title="Short Description" content={product.short_description} empty="No short description set" />
+
+              {/* Images Section */}
+              <ImageManager product={product} onRefresh={loadProduct} />
+            </div>
+          )}
+
+          {/* AI Generator Tab */}
+          {activeTab === "ai" && (
+            <div className="space-y-4">
+              {/* Generate Button */}
+              <button onClick={handleGenerate} disabled={generating}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {generating ? "Generating all content..." : "Generate AI Content"}
+              </button>
+
+              {generated?.modelUsed && (
+                <p className="text-xs text-gray-500">
+                  Generated using <span className="text-gray-400">{generated.modelUsed}</span>
+                </p>
+              )}
+
+              {/* Field Selection + Apply */}
+              {generated && (
+                <div className="rounded-xl border border-green-800 bg-green-900/20 p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-green-400">Select fields to push to WooCommerce:</h3>
+                  <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {selectedFields.map((field) => (
+                      <label key={field.key} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${field.enabled ? "border-green-600 bg-green-600/10 text-green-400" : "border-gray-700 bg-gray-800 text-gray-500"}`}>
+                        <input type="checkbox" checked={field.enabled} onChange={() => toggleField(field.key)} className="sr-only" />
+                        <div className={`flex h-4 w-4 items-center justify-center rounded border ${field.enabled ? "border-green-500 bg-green-500" : "border-gray-600"}`}>
+                          {field.enabled && <Check className="h-3 w-3 text-white" />}
+                        </div>
+                        {field.label}
+                      </label>
+                    ))}
+                  </div>
+                  <button onClick={handleApplySelected} disabled={applying}
+                    className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50">
+                    {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    {applying ? "Pushing to Store..." : "Apply Selected to WooCommerce"}
+                  </button>
+                </div>
+              )}
+
+              {/* Generated Content Preview */}
+              {generated && (
+                <div className="space-y-4">
+                  {generated.name && (
+                    <PreviewSection title="Product Title">
+                      <p className="text-sm text-white font-medium">{generated.name}</p>
+                    </PreviewSection>
+                  )}
+                  <PreviewSection title="Short Description">
+                    <p className="text-sm text-gray-300">{generated.shortDescription}</p>
+                  </PreviewSection>
+                  <PreviewSection title="Full Description">
+                    <div className="prose prose-invert prose-sm max-w-none text-gray-400" dangerouslySetInnerHTML={{ __html: generated.description }} />
+                  </PreviewSection>
+                  {generated.bulletPoints.length > 0 && (
+                    <PreviewSection title="Bullet Points">
+                      <ul className="space-y-1">{generated.bulletPoints.map((bp, i) => <li key={i} className="text-sm text-gray-300">• {bp}</li>)}</ul>
+                    </PreviewSection>
+                  )}
+                  <PreviewSection title="SEO Metadata">
+                    <div className="space-y-1 text-sm">
+                      <p><span className="text-gray-500">Title:</span> <span className="text-gray-300">{generated.metaTitle}</span></p>
+                      <p><span className="text-gray-500">Description:</span> <span className="text-gray-300">{generated.metaDescription}</span></p>
+                      <p><span className="text-gray-500">Keyword:</span> <span className="text-gray-300">{generated.focusKeyword}</span></p>
+                    </div>
+                  </PreviewSection>
+                  {generated.tags && generated.tags.length > 0 && (
+                    <PreviewSection title="Tags">
+                      <div className="flex flex-wrap gap-2">{generated.tags.map((tag, i) => <span key={i} className="rounded-full bg-blue-500/20 px-3 py-1 text-xs text-blue-400">{tag}</span>)}</div>
+                    </PreviewSection>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-4">
+          <HealthScoreCard healthScore={healthScore} />
+          <ProductInfoCard product={product} onSave={handleManualSave} />
+          <RecentChanges productId={productId} onUndo={loadProduct} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContentBlock({ title, content, empty }: { title: string; content: string; empty: string }) {
+  const clean = content?.replace(/<[^>]*>/g, "").trim();
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <h3 className="mb-2 text-sm font-semibold text-gray-300">{title}</h3>
+      {clean ? <div className="prose prose-invert prose-sm max-w-none text-gray-400" dangerouslySetInnerHTML={{ __html: content }} /> : <p className="text-sm text-gray-500">{empty}</p>}
+    </div>
+  );
+}
+
+function PreviewSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+      <h4 className="mb-2 text-sm font-semibold text-gray-400">{title}</h4>
+      {children}
+    </div>
+  );
+}
+
+function HealthScoreCard({ healthScore }: { healthScore: HealthScoreType | null }) {
+  if (!healthScore) return null;
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <h3 className="mb-3 text-sm font-semibold text-gray-300">Health Score Breakdown</h3>
+      <div className="space-y-2">
+        {Object.entries(healthScore.breakdown).map(([key, value]) => (
+          <div key={key} className="flex items-center justify-between">
+            <span className="text-xs text-gray-400 capitalize">{key.replace(/([A-Z])/g, " $1")}</span>
+            <div className="flex items-center gap-2">
+              <div className="h-1.5 w-20 overflow-hidden rounded-full bg-gray-700">
+                <div className={`h-full rounded-full ${value >= 80 ? "bg-green-500" : value >= 50 ? "bg-blue-500" : value >= 30 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${value}%` }} />
+              </div>
+              <span className="w-8 text-right text-xs text-gray-500">{value}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (updates: Record<string, unknown>) => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [gtin, setGtin] = useState(String(product["gtin"] || ""));
+  const [upc, setUpc] = useState(String(product["upc"] || ""));
+  const [ean, setEan] = useState(String(product["ean"] || ""));
+  const [tags, setTags] = useState(product.tags?.map((t) => t.name).join(", ") || "");
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const updates: Record<string, unknown> = {};
+      updates.meta_data = [
+        { key: "gtin", value: gtin },
+        { key: "upc", value: upc },
+        { key: "ean", value: ean },
+      ];
+      if (tags !== (product.tags?.map((t) => t.name).join(", ") || "")) {
+        updates.tags = tags.split(",").map((t) => t.trim()).filter(Boolean).map((name) => ({ name }));
+      }
+      await onSave(updates);
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-300">Product Info</h3>
+        {!editing ? (
+          <button onClick={() => setEditing(true)} className="text-xs text-blue-400 hover:text-blue-300">Edit</button>
+        ) : (
+          <div className="flex gap-2">
+            <button onClick={() => setEditing(false)} className="text-xs text-gray-500 hover:text-gray-400">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="text-xs text-green-400 hover:text-green-300 disabled:opacity-50">
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="space-y-2 text-sm">
+        <InfoRow label="Price" value={`R${product.price || product.regular_price || "0.00"}`} />
+        {product.sale_price && <InfoRow label="Sale Price" value={`R${product.sale_price}`} />}
+        <InfoRow label="Status" value={product.status} />
+        <InfoRow label="Stock" value={product.stock_status} />
+        <InfoRow label="SKU" value={product.sku || "N/A"} />
+        {editing ? (
+          <>
+            <EditableRow label="GTIN" value={gtin} onChange={setGtin} />
+            <EditableRow label="UPC" value={upc} onChange={setUpc} />
+            <EditableRow label="EAN" value={ean} onChange={setEan} />
+            <EditableRow label="Tags" value={tags} onChange={setTags} />
+          </>
+        ) : (
+          <>
+            {gtin && <InfoRow label="GTIN" value={gtin} />}
+            {upc && <InfoRow label="UPC" value={upc} />}
+            {ean && <InfoRow label="EAN" value={ean} />}
+            <InfoRow label="Tags" value={tags || "None"} />
+          </>
+        )}
+        <InfoRow label="Categories" value={product.categories?.map((c) => c.name).join(", ") || "None"} />
+        <InfoRow label="Attributes" value={product.attributes?.map((a) => a.name).join(", ") || "None"} />
+        <InfoRow label="Images" value={`${product.images?.length || 0} image(s)`} />
+        <InfoRow label="Featured" value={product.featured ? "Yes" : "No"} />
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-gray-500">{label}</span>
+      <span className="max-w-[60%] truncate text-right text-gray-300">{value}</span>
+    </div>
+  );
+}
+
+function EditableRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-gray-500">{label}</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-[60%] rounded border border-gray-700 bg-gray-800 px-2 py-1 text-right text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
+      />
+    </div>
+  );
+}
+
+interface HistoryItem {
+  id: number;
+  field: string;
+  old_value: string;
+  new_value: string;
+  timestamp: string;
+}
+
+function timeAgo(timestamp: string): string {
+  const hours = Math.floor((Date.now() - new Date(timestamp).getTime()) / (1000 * 60 * 60));
+  if (hours < 1) return "just now";
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago${days < 7 ? ` (expires in ${7 - days}d)` : ""}`;
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Title",
+  description: "Description",
+  short_description: "Short Description",
+  meta_title: "SEO Title",
+  meta_description: "SEO Description",
+  tags: "Tags",
+};
+
+function RecentChanges({ productId, onUndo }: { productId: number; onUndo: () => void }) {
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [undoingId, setUndoingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    loadHistory();
+  }, [productId]);
+
+  async function loadHistory() {
+    try {
+      const res = await fetch(`/api/optimize/history?productId=${productId}`);
+      const data = await res.json();
+      setHistory(data.history || []);
+    } catch {
+      // non-critical, fail silently
+    }
+  }
+
+  async function handleUndo(id: number) {
+    setUndoingId(id);
+    try {
+      const res = await fetch("/api/optimize/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historyId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Undo failed");
+      toast.success(`Reverted ${FIELD_LABELS[data.restoredField] || data.restoredField}`);
+      await loadHistory();
+      onUndo();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Undo failed");
+    } finally {
+      setUndoingId(null);
+    }
+  }
+
+  if (history.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <h3 className="mb-3 text-sm font-semibold text-gray-300">Recent Changes</h3>
+      <div className="space-y-2">
+        {history.map((h) => (
+          <div key={h.id} className="flex items-center justify-between text-xs">
+            <div className="min-w-0 flex-1">
+              <span className="text-gray-300">{FIELD_LABELS[h.field] || h.field}</span>
+              <span className="ml-1 text-gray-500">{timeAgo(h.timestamp)}</span>
+            </div>
+            <button
+              onClick={() => handleUndo(h.id)}
+              disabled={undoingId === h.id}
+              className="ml-2 shrink-0 text-blue-400 hover:text-blue-300 disabled:opacity-50"
+            >
+              {undoingId === h.id ? "..." : "Undo"}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ImageManager({ product, onRefresh }: { product: WCProduct; onRefresh: () => void }) {
+  const [adding, setAdding] = useState(false);
+  const [newUrl, setNewUrl] = useState("");
+  const [newName, setNewName] = useState("");
+  const [working, setWorking] = useState<number | null>(null);
+
+  async function apiCall(action: string, data: Record<string, unknown> = {}) {
+    setWorking(Date.now());
+    try {
+      const res = await fetch("/api/products/images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: product.id, action, ...data }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed");
+      }
+      toast.success(`Image ${action === "add" ? "added" : action === "remove" ? "removed" : "reordered"}`);
+      setNewUrl("");
+      setNewName("");
+      setAdding(false);
+      onRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setWorking(null);
+    }
+  }
+
+  function moveImage(fromIdx: number, direction: "up" | "down") {
+    const toIdx = direction === "up" ? fromIdx - 1 : fromIdx + 1;
+    const images = product.images || [];
+    if (toIdx < 0 || toIdx >= images.length) return;
+    apiCall("reorder", { imageId: images[fromIdx].id, position: toIdx });
+  }
+
+  const images = product.images || [];
+
+  return (
+    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+          <ImageIcon className="h-4 w-4" /> Images ({images.length})
+        </h3>
+        <button
+          onClick={() => setAdding(!adding)}
+          className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+        >
+          <Plus className="h-3 w-3" /> Add Image
+        </button>
+      </div>
+
+      {adding && (
+        <div className="mb-4 space-y-2 rounded-lg border border-blue-800 bg-blue-900/20 p-3">
+          <input
+            type="text"
+            placeholder="Image URL (https://...)"
+            value={newUrl}
+            onChange={(e) => setNewUrl(e.target.value)}
+            className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Image name (optional)"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none"
+            />
+            <button
+              onClick={() => apiCall("add", { imageUrl: newUrl, imageName: newName })}
+              disabled={!newUrl.trim() || working !== null}
+              className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {working ? "Adding..." : "Add"}
+            </button>
+            <button
+              onClick={() => { setAdding(false); setNewUrl(""); setNewName(""); }}
+              className="rounded-lg bg-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {images.length > 0 ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          {images.map((img, i) => (
+            <div key={img.id} className="group relative">
+              <img src={img.src} alt={img.alt || product.name} className="aspect-square w-full rounded-lg object-cover" />
+              <div className="absolute left-1 top-1 rounded bg-blue-600 px-1.5 py-0.5 text-[10px] text-white">
+                #{i + 1}
+              </div>
+              {!img.alt && (
+                <div className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[8px] text-white">!</div>
+              )}
+              <div className="absolute inset-0 flex items-center justify-center gap-1 rounded-lg bg-black/70 opacity-0 transition-opacity group-hover:opacity-100">
+                {i > 0 && (
+                  <button
+                    onClick={() => moveImage(i, "up")}
+                    disabled={working !== null}
+                    className="rounded bg-gray-700 p-1.5 text-white hover:bg-gray-600 disabled:opacity-50"
+                  >
+                    <ArrowUp className="h-3 w-3" />
+                  </button>
+                )}
+                {i < images.length - 1 && (
+                  <button
+                    onClick={() => moveImage(i, "down")}
+                    disabled={working !== null}
+                    className="rounded bg-gray-700 p-1.5 text-white hover:bg-gray-600 disabled:opacity-50"
+                  >
+                    <ArrowDown className="h-3 w-3" />
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (confirm(`Remove image #${i + 1}?`)) apiCall("remove", { imageId: img.id });
+                  }}
+                  disabled={working !== null}
+                  className="rounded bg-red-600 p-1.5 text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-gray-500">No images. Click "Add Image" to add one by URL.</p>
+      )}
+    </div>
+  );
+}
