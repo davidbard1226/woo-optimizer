@@ -187,52 +187,55 @@ Rules: include brand, key specs, SEO keywords. Max 70 chars. No explanations. No
 
 export async function generateDescription(product: WCProduct): Promise<string> {
   const context = buildProductContext(product);
-  return callAI(`Write a compelling product description in HTML for:
+  return callAI(`Write a product description in HTML for:
 
 ${context}
 
+Structure the description in three sections:
+1) Brief intro paragraph about the product
+2) Full specifications
+3) What's in the box section
+
 Rules:
-- Use HTML tags: <p>, <strong>
-- 200-500 words
+- Use HTML tags: <p>, <strong>, <h3>
 - Do NOT include bullet points — they will be in the short description
 - Include keywords for Google SEO
-- Highlight benefits and features
-- Write in persuasive marketing language
-- Price is in South African Rands (ZAR)`, 2048);
+- Write clearly and informatively
+- Price is in South African Rands (ZAR)
+- End with <h3>What's in the Box</h3> followed by a paragraph listing contents`, 2048);
 }
 
 export async function generateShortDescription(product: WCProduct, bulletPoints: string[] = []): Promise<string> {
-  const bullets = bulletPoints.slice(0, 5);
-  if (bullets.length > 0) {
-    return bullets.map((b) => "• " + b).join("\n");
+  if (bulletPoints.length > 0) {
+    return bulletPoints.map((b) => "• " + b).join("\n");
   }
   const context = buildProductContext(product);
-  const summary = await callAI(`List key features for:
+  const summary = await callAI(`Output 4-6 short bullet points for:
 
 ${context}
 
-Output only bullet points, one per line, each starting with •. Max 5. No sentences. No labels.`, 256);
+One per line, each starting with •. Format: Feature: value. Max 60 chars each. No sentences. No labels.`, 256);
   return summary;
 }
 
 export async function generateBulletPoints(product: WCProduct): Promise<string[]> {
   const context = buildProductContext(product);
-  const response = await callAI(`Write 5 product feature bullet points for:
+  const response = await callAI(`Write 4-6 short product bullet points for:
 
 ${context}
 
-One per line. Format: Feature Name: description
-Example:
-Speed: Up to 25 ppm for efficient workflow
-Capacity: 128GB of reliable storage
+Format: each line a short sharp feature, e.g.:
+mm Spec: 690 mm
+Category: Office | Shredders
+Ideal for home and office use
 
-Output exactly 5 bullets, no more.`, 512);
+One per line. Max 60 chars each. No long descriptions.`, 512);
 
   return response
     .split("\n")
     .map((l) => l.replace(/^[-•*]\s*/, "").trim())
-    .filter((l) => l.includes(":") && l.length > 10)
-    .slice(0, 5);
+    .filter((l) => l.length > 5 && l.length < 80)
+    .slice(0, 6);
 }
 
 export async function generateSEO(product: WCProduct): Promise<{
@@ -285,22 +288,22 @@ export async function generateAll(product: WCProduct): Promise<AIGeneratedConten
 
   const shortDescription = await generateShortDescription(product, bulletPoints);
 
-  // Embed product images into the description HTML for SEO
+  // Embed product images into the description HTML for SEO and visual appeal
   const images = product.images || [];
   let descWithImages = description;
   if (images.length > 0) {
     const imgTags = images
       .slice(0, 3)
-      .map((img) => `<img src="${img.src}" alt="${img.alt || product.name}" style="max-width:100%;height:auto;margin:12px 0" />`)
+      .map((img) => `<img src="${img.src}" alt="${img.alt || product.name}" style="max-width:100%;height:auto;margin:12px 0;display:block" />`)
       .join("\n");
 
-    // Insert images after first paragraph
-    const firstP = descWithImages.indexOf("</p>");
-    if (firstP !== -1) {
+    // Insert images after the intro paragraph (before specs)
+    const afterFirstP = descWithImages.indexOf("</p>");
+    if (afterFirstP !== -1) {
       descWithImages =
-        descWithImages.slice(0, firstP + 4) +
+        descWithImages.slice(0, afterFirstP + 4) +
         "\n" + imgTags + "\n" +
-        descWithImages.slice(firstP + 4);
+        descWithImages.slice(afterFirstP + 4);
     } else {
       descWithImages = imgTags + "\n" + descWithImages;
     }
