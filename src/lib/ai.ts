@@ -191,18 +191,18 @@ export async function generateDescription(product: WCProduct): Promise<string> {
 
 ${context}
 
-Structure the description in three sections:
-1) Brief intro paragraph about the product
-2) Full specifications
-3) What's in the box section
+Structure EXACTLY in three sections using <h3> headings:
+1) Brief intro paragraph about the product (one <p> only)
+2) Full technical specifications (use <p> tags, describe features naturally)
+3) <h3>What's in the Box</h3> followed by a <p> listing box contents
 
 Rules:
-- Use HTML tags: <p>, <strong>, <h3>
-- Do NOT include bullet points — they will be in the short description
-- Include keywords for Google SEO
-- Write clearly and informatively
+- Use ONLY <p>, <strong>, <h3> tags
+- NO bullet points, NO asterisks, NO dashes, NO numbered lists
+- NO marketing fluff like "Upgrade your workflow" or "exceptional value"
+- Write factual, informative content only
 - Price is in South African Rands (ZAR)
-- End with <h3>What's in the Box</h3> followed by a paragraph listing contents`, 2048);
+- MUST end with a "What's in the Box" section`, 2048);
 }
 
 export async function generateShortDescription(product: WCProduct, bulletPoints: string[] = []): Promise<string> {
@@ -225,16 +225,16 @@ export async function generateBulletPoints(product: WCProduct): Promise<string[]
 ${context}
 
 Format: each line a short sharp feature, e.g.:
-mm Spec: 690 mm
-Category: Office | Shredders
+Speed: up to 25 ppm
+5-year warranty included
 Ideal for home and office use
 
-One per line. Max 60 chars each. No long descriptions.`, 512);
+One per line. Max 60 chars each. No long descriptions. Do NOT repeat category names.`, 512);
 
   return response
     .split("\n")
     .map((l) => l.replace(/^[-•*]\s*/, "").trim())
-    .filter((l) => l.length > 5 && l.length < 80)
+    .filter((l) => l.length > 5 && l.length < 80 && !/^(category|reliable|ideal for)\b/i.test(l))
     .slice(0, 6);
 }
 
@@ -287,6 +287,9 @@ export async function generateAll(product: WCProduct): Promise<AIGeneratedConten
   ]);
 
   const shortDescription = await generateShortDescription(product, bulletPoints);
+
+  // Strip any stray bullet points that leaked into the description
+  let cleanedDesc = description.replace(/^[\s]*[-•*]\s*/gm, "");
 
   // Embed product images into the description HTML for SEO and visual appeal
   const images = product.images || [];
