@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchProducts } from "@/lib/woocommerce";
+import fs from "fs";
+import path from "path";
+
+const CACHE_FILE = path.join(process.cwd(), "data", "products-cache.json");
+
+function updateCache(products: unknown[]) {
+  try {
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(products, null, 2), "utf-8");
+  } catch {}
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,31 +30,30 @@ export async function GET(request: NextRequest) {
         orderby,
         order,
       });
+      if (!search && page === 1) {
+        updateCache(result.products);
+      }
       return NextResponse.json(result);
     } catch (fetchErr) {
-      if (search && fetchErr instanceof Error && fetchErr.message.includes("500")) {
-        const all = await fetchProducts({
-          page: 1,
-          per_page: 100,
-          search: undefined,
-          status,
-          orderby: "title",
-          order: "asc",
-        });
-        const term = search.toLowerCase();
-        const filtered = (all.products || []).filter(
-          (p) =>
-            p.name.toLowerCase().includes(term) ||
-            (p.sku || "").toLowerCase().includes(term)
-        );
-        const start = (page - 1) * per_page;
-        const paged = filtered.slice(start, start + per_page);
-        return NextResponse.json({
-          products: paged,
-          total: filtered.length,
-          totalPages: Math.ceil(filtered.length / per_page),
-          searchFallback: true,
-        });
+      // On search failure, try reading from persistent cache
+      if (search) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
+          const cached = Array.isArray(raw) ? raw : raw.products || [];
+          const term = search.toLowerCase();
+          const filtered = cached.filter(
+            (p: { name?: string; sku?: string }) =>
+              (p.name || "").toLowerCase().includes(term) ||
+              (p.sku || "").toLowerCase().includes(term)
+          );
+          const start = (page - 1) * per_page;
+          return NextResponse.json({
+            products: filtered.slice(start, start + per_page),
+            total: filtered.length,
+            totalPages: Math.ceil(filtered.length / per_page),
+            searchFallback: true,
+          });
+        } catch {}
       }
       throw fetchErr;
     }
