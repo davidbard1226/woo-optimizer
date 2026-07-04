@@ -13,69 +13,73 @@ interface ProductWithScore extends WCProduct {
 }
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<ProductWithScore[]>([]);
+  const [allProducts, setAllProducts] = useState<ProductWithScore[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [sortBy, setSortBy] = useState("date");
   const [sortOrder, setSortOrder] = useState("desc");
   const [error, setError] = useState("");
-  const [searchFallback, setSearchFallback] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const searchTimer = useRef<NodeJS.Timeout | null>(null);
+  const allLoadedRef = useRef(false);
 
-  const loadProducts = useCallback(async (searchTerm: string, pageNum: number) => {
+  // Load all products upfront (up to 500) for reliable client-side search
+  const loadAllProducts = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({
-        page: String(pageNum),
-        per_page: "20",
-        orderby: sortBy,
-        order: sortOrder,
-      });
-      if (searchTerm) params.set("search", searchTerm);
-
-      const res = await fetch(`/api/products?${params}`);
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to load products");
-      }
+      const res = await fetch("/api/products?per_page=100&page=1&orderby=title&order=asc");
+      if (!res.ok) throw new Error("Failed to load products");
       const data = await res.json();
-
       const withScores: ProductWithScore[] = (data.products || []).map((p: WCProduct) => ({
         ...p,
         healthScore: calculateHealthScore(p),
       }));
-
-      if (sortBy === "health") {
-        withScores.sort((a, b) =>
-          sortOrder === "asc"
-            ? a.healthScore.total - b.healthScore.total
-            : b.healthScore.total - a.healthScore.total
-        );
-      }
-
-      setProducts(withScores);
-      setTotalPages(data.totalPages || 1);
+      setAllProducts(withScores);
       setTotal(data.total || 0);
-      setSelected(new Set());
-      setSearchFallback(!!data.searchFallback);
+      allLoadedRef.current = true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load products");
-      setProducts([]);
     } finally {
       setLoading(false);
     }
-  }, [sortBy, sortOrder]);
+  }, []);
 
-  useEffect(() => {
-    loadProducts(search, page);
-  }, [page, sortBy, sortOrder, search, loadProducts]);
+  useEffect(() => { loadAllProducts(); }, [loadAllProducts]);
+
+  // Derive displayed products from allProducts based on search and pagination
+  const displayed = (() => {
+    let filtered = allProducts;
+    if (search) {
+      const term = search.toLowerCase();
+      filtered = allProducts.filter(
+        (p) =>
+          p.name.toLowerCase().includes(term) ||
+          (p.sku || "").toLowerCase().includes(term)
+      );
+    }
+    // Sort
+    const sorted = [...filtered].sort((a, b) => {
+      let cmp = 0;
+      if (sortBy === "title") cmp = a.name.localeCompare(b.name);
+      else if (sortBy === "price") cmp = (parseFloat(a.price) || 0) - (parseFloat(b.price) || 0);
+      else if (sortBy === "health") cmp = a.healthScore.total - b.healthScore.total;
+      else cmp = a.date_created?.localeCompare(b.date_created || "") || 0;
+      return sortOrder === "asc" ? cmp : -cmp;
+    });
+    const perPage = 20;
+    const start = (page - 1) * perPage;
+    return {
+      products: sorted.slice(start, start + perPage),
+      total: sorted.length,
+      totalPages: Math.ceil(sorted.length / perPage),
+    };
+  })();
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,7 +93,7 @@ export default function ProductsPage() {
     searchTimer.current = setTimeout(() => {
       setSearch(value);
       setPage(1);
-    }, 400);
+    }, 200);
   };
 
   function toggleSelect(id: number) {
@@ -101,10 +105,10 @@ export default function ProductsPage() {
   }
 
   function toggleSelectAll() {
-    if (selected.size === products.length) {
+    if (selected.size === displayed.products.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(products.map((p) => p.id)));
+      setSelected(new Set(displayed.products.map((p) => p.id)));
     }
   }
 
@@ -126,7 +130,7 @@ export default function ProductsPage() {
       }
       const data = await res.json();
       toast.success(`Deleted ${data.deleted} product(s)`);
-      loadProducts(search, page);
+      loadAllProducts();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -204,10 +208,10 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {searchFallback && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-800 bg-amber-900/20 p-4 text-sm text-amber-400">
-          <AlertCircle className="h-5 w-5 shrink-0" />
-          WooCommerce search API returned an error. Results are filtered client-side and may be incomplete.
+      {search && allLoadedRef.current && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-800 bg-blue-900/20 p-3 text-sm text-blue-400">
+          <Search className="h-4 w-4 shrink-0" />
+          Client-side search ({displayed.total} of {total} products match)
         </div>
       )}
 
@@ -215,7 +219,7 @@ export default function ProductsPage() {
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
         </div>
-      ) : products.length === 0 ? (
+      ) : displayed.products.length === 0 ? (
         <div className="rounded-lg border border-gray-800 bg-gray-900 p-12 text-center">
           <Search className="mx-auto mb-3 h-8 w-8 text-gray-600" />
           <p className="text-gray-400">
@@ -232,7 +236,7 @@ export default function ProductsPage() {
               <tr className="border-b border-gray-800 text-left text-xs uppercase text-gray-500">
                 <th className="w-10 px-2 py-3">
                   <button onClick={toggleSelectAll} className="text-gray-500 hover:text-white">
-                    {selected.size === products.length ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    {selected.size === displayed.products.length ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
                   </button>
                 </th>
                 <th className="px-4 py-3">Product</th>
@@ -243,7 +247,7 @@ export default function ProductsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {products.map((product) => (
+              {displayed.products.map((product) => (
                 <tr key={product.id} className={`hover:bg-gray-800/50 ${selected.has(product.id) ? "bg-blue-900/20" : ""}`}>
                   <td className="px-2 py-3">
                     <button onClick={() => toggleSelect(product.id)} className="text-gray-500 hover:text-white">
@@ -315,10 +319,10 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {totalPages > 1 && (
+      {displayed.totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-500">
-            Page {page} of {totalPages}
+            Page {page} of {displayed.totalPages}
           </p>
           <div className="flex gap-2">
             <button
@@ -329,8 +333,8 @@ export default function ProductsPage() {
               <ChevronLeft className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setPage(Math.min(totalPages, page + 1))}
-              disabled={page >= totalPages}
+              onClick={() => setPage(Math.min(displayed.totalPages, page + 1))}
+              disabled={page >= displayed.totalPages}
               className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
             >
               <ChevronRight className="h-4 w-4" />
