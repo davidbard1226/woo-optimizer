@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { fetchProducts } from "@/lib/woocommerce";
 import { calculateHealthScore } from "@/lib/health-score";
 import { getOptimizationHistory } from "@/lib/db";
 import { WCProduct } from "@/lib/types";
@@ -7,12 +6,6 @@ import fs from "fs";
 import path from "path";
 
 const CACHE_FILE = path.join(process.cwd(), "data", "products-cache.json");
-
-function updateCache(products: WCProduct[]) {
-  try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify({ products }, null, 2), "utf-8");
-  } catch {}
-}
 
 function readCache(): WCProduct[] {
   try {
@@ -64,49 +57,22 @@ function computeStats(products: WCProduct[], total: number) {
 }
 
 export async function GET() {
-  // Serve cached data immediately
   const cached = readCache();
   if (cached.length > 0) {
-    // Background refresh from WooCommerce (fire and forget)
-    fetchAllFromWooCommerce().catch(() => {});
     return NextResponse.json({
       ...computeStats(cached, cached.length),
       fromCache: true,
     });
   }
 
-  // No cache yet — try WooCommerce
-  try {
-    const data = await fetchAllFromWooCommerce();
-    return NextResponse.json({ ...data, fromCache: false });
-  } catch {
-    return NextResponse.json({
-      totalProducts: 0,
-      scannedProducts: 0,
-      avgHealthScore: 0,
-      lowScoreProducts: 0,
-      recentOptimizations: 0,
-      buckets: { excellent: 0, good: 0, fair: 0, poor: 0 },
-      lowestScoring: [],
-      fromCache: true,
-    });
-  }
-}
-
-async function fetchAllFromWooCommerce() {
-  const allProducts: WCProduct[] = [];
-  let page = 1;
-  let totalPages = 1;
-  let total = 0;
-
-  do {
-    const result = await fetchProducts({ page, per_page: 100, status: "any" });
-    allProducts.push(...result.products);
-    total = result.total;
-    totalPages = result.totalPages;
-    page++;
-  } while (page <= totalPages);
-
-  updateCache(allProducts);
-  return computeStats(allProducts, total);
+  return NextResponse.json({
+    totalProducts: 0,
+    scannedProducts: 0,
+    avgHealthScore: 0,
+    lowScoreProducts: 0,
+    recentOptimizations: 0,
+    buckets: { excellent: 0, good: 0, fair: 0, poor: 0 },
+    lowestScoring: [],
+    fromCache: true,
+  });
 }

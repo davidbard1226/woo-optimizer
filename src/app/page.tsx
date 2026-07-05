@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Package, TrendingUp, AlertTriangle, Zap, ArrowRight } from "lucide-react";
+import { Package, TrendingUp, AlertTriangle, Zap, ArrowRight, RefreshCw } from "lucide-react";
 
 interface Stats {
   totalProducts: number;
@@ -18,6 +18,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
 
   useEffect(() => {
     loadStats();
@@ -36,6 +38,22 @@ export default function Dashboard() {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncMsg("");
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sync failed");
+      setSyncMsg(`Added ${data.added}, updated ${data.updated} (${data.total} total)`);
+      await loadStats();
+    } catch (err) {
+      setSyncMsg(`Error: ${err instanceof Error ? err.message : "Sync failed"}`);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -61,9 +79,24 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-gray-400">Overview of your WooCommerce product optimization</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <p className="text-gray-400">Overview of your WooCommerce product optimization</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {syncMsg && (
+            <span className="text-xs text-gray-400">{syncMsg}</span>
+          )}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-gray-600 hover:bg-gray-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing..." : "Sync from WooCommerce"}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

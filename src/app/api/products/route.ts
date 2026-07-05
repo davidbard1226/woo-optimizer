@@ -31,10 +31,9 @@ export async function GET(request: NextRequest) {
   const orderby = searchParams.get("orderby") || "date";
   const order = searchParams.get("order") || "desc";
 
-  // Read cache immediately
   const cached = readCache().products;
 
-  // Background refresh from WooCommerce (fire and forget)
+  // No cache — try WooCommerce once
   if (cached.length === 0) {
     try {
       const result = await fetchProducts({ page: 1, per_page: Math.min(per_page, 100), search, status, orderby, order });
@@ -45,7 +44,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Filter from cache
+  // Filter from cache (client-side search)
   let filtered = cached;
   if (search) {
     const term = search.toLowerCase();
@@ -66,24 +65,6 @@ export async function GET(request: NextRequest) {
   });
 
   const start = (page - 1) * per_page;
-
-  // Background refresh from WooCommerce (paginate all pages)
-  if (!search && status === "any") {
-    (async () => {
-      try {
-        const all: Array<Record<string, unknown>> = [];
-        let p = 1;
-        let totalPages = 1;
-        while (p <= totalPages) {
-          const result = await fetchProducts({ page: p, per_page: 100, status: "any", orderby: "title", order: "asc" });
-          all.push(...result.products);
-          totalPages = result.totalPages;
-          p++;
-        }
-        if (all.length) updateCache(all);
-      } catch {}
-    })();
-  }
 
   return NextResponse.json({
     products: sorted.slice(start, start + per_page),
