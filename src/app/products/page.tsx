@@ -33,7 +33,7 @@ export default function ProductsPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/products?per_page=100&page=1&orderby=title&order=asc");
+      const res = await fetch("/api/products?per_page=9999&page=1&orderby=title&order=asc");
       if (!res.ok) throw new Error("Failed to load products");
       const data = await res.json();
       const withScores: ProductWithScore[] = (data.products || []).map((p: WCProduct) => ({

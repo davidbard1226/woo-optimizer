@@ -25,6 +25,10 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [editingShort, setEditingShort] = useState(false);
+  const [editingFull, setEditingFull] = useState(false);
+  const [shortValue, setShortValue] = useState("");
+  const [fullValue, setFullValue] = useState("");
   const [selectedFields, setSelectedFields] = useState<FieldOption[]>([
     { key: "name", label: "Product Title", enabled: true },
     { key: "shortDescription", label: "Short Description + Bullets", enabled: true },
@@ -204,8 +208,53 @@ export default function ProductDetailPage() {
 
           {/* Current Content */}
           <div className="space-y-4">
-            <ContentBlock title="Short Description" content={product.short_description} empty="No short description set" />
-            <ContentBlock title="Full Description" content={product.description} empty="No description set" />
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-gray-400">Short Description</h4>
+                <div className="flex gap-2">
+                  {product.short_description && !editingShort && (
+                    <button onClick={() => handleManualSave({ short_description: "" })} className="text-xs text-red-400 hover:text-red-300">Clear</button>
+                  )}
+                  <button onClick={() => { setEditingShort(!editingShort); setShortValue(product.short_description || ""); }} className="text-xs text-blue-400 hover:text-blue-300">
+                    {editingShort ? "Cancel" : "Edit"}
+                  </button>
+                </div>
+              </div>
+              {editingShort ? (
+                <div>
+                  <textarea value={shortValue} onChange={(e) => setShortValue(e.target.value)} rows={4}
+                    className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none" />
+                  <button onClick={async () => { await handleManualSave({ short_description: shortValue }); setEditingShort(false); }}
+                    className="mt-2 rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700">Save</button>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-300" dangerouslySetInnerHTML={{ __html: product.short_description || "<span class='text-gray-500'>No short description set</span>" }} />
+              )}
+            </div>
+
+            <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-gray-400">Full Description</h4>
+                <div className="flex gap-2">
+                  {product.description && !editingFull && (
+                    <button onClick={() => handleManualSave({ description: "" })} className="text-xs text-red-400 hover:text-red-300">Clear</button>
+                  )}
+                  <button onClick={() => { setEditingFull(!editingFull); setFullValue(product.description || ""); }} className="text-xs text-blue-400 hover:text-blue-300">
+                    {editingFull ? "Cancel" : "Edit"}
+                  </button>
+                </div>
+              </div>
+              {editingFull ? (
+                <div>
+                  <textarea value={fullValue} onChange={(e) => setFullValue(e.target.value)} rows={10}
+                    className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none" />
+                  <button onClick={async () => { await handleManualSave({ description: fullValue }); setEditingFull(false); }}
+                    className="mt-2 rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700">Save</button>
+                </div>
+              ) : (
+                <div className="prose prose-invert max-w-none text-sm text-gray-300" dangerouslySetInnerHTML={{ __html: product.description || "<span class='text-gray-500'>No description set</span>" }} />
+              )}
+            </div>
 
             {/* PDF Upload for Full Description */}
             <div className="rounded-xl border border-dashed border-gray-700 bg-gray-900/50 p-4">
@@ -310,16 +359,6 @@ export default function ProductDetailPage() {
   );
 }
 
-function ContentBlock({ title, content, empty }: { title: string; content: string; empty: string }) {
-  const clean = content?.replace(/<[^>]*>/g, "").trim();
-  return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900 p-4">
-      <h3 className="mb-2 text-sm font-semibold text-gray-300">{title}</h3>
-      {clean ? <div className="prose prose-invert prose-sm max-w-none text-gray-400" dangerouslySetInnerHTML={{ __html: content }} /> : <p className="text-sm text-gray-500">{empty}</p>}
-    </div>
-  );
-}
-
 function PreviewSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="rounded-lg border border-gray-700 bg-gray-800/50 p-4">
@@ -354,6 +393,7 @@ function HealthScoreCard({ healthScore }: { healthScore: HealthScoreType | null 
 function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (updates: Record<string, unknown>) => Promise<void> }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [title, setTitle] = useState(product.name || "");
   const [regularPrice, setRegularPrice] = useState(String(product.regular_price || product.price || ""));
   const [salePrice, setSalePrice] = useState(String(product.sale_price || ""));
   const [stockStatus, setStockStatus] = useState(product.stock_status || "instock");
@@ -368,6 +408,7 @@ function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (upd
     try {
       const updates: Record<string, unknown> = {};
       const origPrice = product.regular_price || product.price || "";
+      if (title !== product.name) updates.name = title;
       if (regularPrice !== origPrice) updates.regular_price = regularPrice;
       if (salePrice !== (product.sale_price || "")) updates.sale_price = salePrice || "";
       if (stockStatus !== product.stock_status) updates.stock_status = stockStatus;
@@ -389,6 +430,7 @@ function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (upd
 
   const viewMode = (
     <>
+      <InfoRow label="Title" value={title} />
       <InfoRow label="Price" value={`R${product.price || product.regular_price || "0.00"}`} />
       {product.sale_price && <InfoRow label="Sale Price" value={`R${product.sale_price}`} />}
       <InfoRow label="Status" value={product.status} />
@@ -407,6 +449,7 @@ function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (upd
 
   const editMode = (
     <>
+      <EditableRow label="Title" value={title} onChange={setTitle} />
       <EditableRow label="Price (R)" value={regularPrice} onChange={setRegularPrice} type="number" />
       <EditableRow label="Sale Price (R)" value={salePrice} onChange={setSalePrice} type="number" />
       <SelectRow label="Stock" value={stockStatus} onChange={setStockStatus}
