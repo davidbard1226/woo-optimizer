@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
-import { WCProduct, AIGeneratedContent, HealthScore as HealthScoreType } from "@/lib/types";
+import { WCProduct, WCImage, AIGeneratedContent, HealthScore as HealthScoreType } from "@/lib/types";
 import { calculateHealthScore } from "@/lib/health-score";
 import HealthScoreComponent from "@/components/HealthScore";
 import { ArrowLeft, Loader2, ExternalLink, Check, Image as ImageIcon, Plus, Trash2, ArrowUp, ArrowDown, Upload, FileText } from "lucide-react";
@@ -322,25 +322,43 @@ export default function ProductDetailPage() {
               <div className="space-y-4">
                 {generated.name && (
                   <PreviewSection title="Product Title">
-                    <p className="text-sm text-white font-medium">{generated.name}</p>
+                    <input type="text" value={generated.name}
+                      onChange={(e) => setGenerated({ ...generated, name: e.target.value })}
+                      className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white focus:border-blue-500 focus:outline-none" />
                   </PreviewSection>
                 )}
                 <PreviewSection title="Short Description + Bullet Points">
-                  <div className="text-sm text-gray-300 whitespace-pre-line">{generated.shortDescription}</div>
+                  <textarea value={generated.shortDescription}
+                    onChange={(e) => setGenerated({ ...generated, shortDescription: e.target.value })} rows={5}
+                    className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none" />
                 </PreviewSection>
                 <PreviewSection title="Full Description">
-                  <div className="prose prose-invert prose-sm max-w-none text-gray-400" dangerouslySetInnerHTML={{ __html: generated.description }} />
+                  <textarea value={generated.description}
+                    onChange={(e) => setGenerated({ ...generated, description: e.target.value })} rows={10}
+                    className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 font-mono text-xs text-gray-300 focus:border-blue-500 focus:outline-none" />
                 </PreviewSection>
                 <PreviewSection title="SEO Metadata">
-                  <div className="space-y-1 text-sm">
-                    <p><span className="text-gray-500">Title:</span> <span className="text-gray-300">{generated.metaTitle}</span></p>
-                    <p><span className="text-gray-500">Description:</span> <span className="text-gray-300">{generated.metaDescription}</span></p>
-                    <p><span className="text-gray-500">Keyword:</span> <span className="text-gray-300">{generated.focusKeyword}</span></p>
+                  <div className="space-y-2 text-sm">
+                    <div><span className="text-gray-500">Title:</span>
+                      <input type="text" value={generated.metaTitle}
+                        onChange={(e) => setGenerated({ ...generated, metaTitle: e.target.value })}
+                        className="ml-2 w-[80%] rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-gray-300 focus:border-blue-500 focus:outline-none" /></div>
+                    <div><span className="text-gray-500">Description:</span>
+                      <input type="text" value={generated.metaDescription}
+                        onChange={(e) => setGenerated({ ...generated, metaDescription: e.target.value })}
+                        className="ml-2 w-[75%] rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-gray-300 focus:border-blue-500 focus:outline-none" /></div>
+                    <div><span className="text-gray-500">Keyword:</span>
+                      <input type="text" value={generated.focusKeyword}
+                        onChange={(e) => setGenerated({ ...generated, focusKeyword: e.target.value })}
+                        className="ml-2 w-[80%] rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-gray-300 focus:border-blue-500 focus:outline-none" /></div>
                   </div>
                 </PreviewSection>
                 {generated.tags && generated.tags.length > 0 && (
                   <PreviewSection title="Tags">
-                    <div className="flex flex-wrap gap-2">{generated.tags.map((tag, i) => <span key={i} className="rounded-full bg-blue-500/20 px-3 py-1 text-xs text-blue-400">{tag}</span>)}</div>
+                    <input type="text" value={generated.tags.join(", ")}
+                      onChange={(e) => setGenerated({ ...generated, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
+                      className="w-full rounded border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-300 focus:border-blue-500 focus:outline-none"
+                      placeholder="Comma-separated tags" />
                   </PreviewSection>
                 )}
               </div>
@@ -402,6 +420,20 @@ function ProductInfoCard({ product, onSave }: { product: WCProduct; onSave: (upd
   const [upc, setUpc] = useState(String(product["upc"] || ""));
   const [ean, setEan] = useState(String(product["ean"] || ""));
   const [tags, setTags] = useState(product.tags?.map((t) => t.name).join(", ") || "");
+
+  useEffect(() => {
+    if (!editing) {
+      setTitle(product.name || "");
+      setRegularPrice(String(product.regular_price || product.price || ""));
+      setSalePrice(String(product.sale_price || ""));
+      setStockStatus(product.stock_status || "instock");
+      setSku(product.sku || "");
+      setGtin(String(product["gtin"] || ""));
+      setUpc(String(product["upc"] || ""));
+      setEan(String(product["ean"] || ""));
+      setTags(product.tags?.map((t) => t.name).join(", ") || "");
+    }
+  }, [product]);
 
   async function handleSave() {
     setSaving(true);
@@ -923,6 +955,9 @@ function ImageManager({ product, onRefresh, onInsertInDesc }: {
                   <Trash2 className="h-3 w-3" />
                 </button>
               </div>
+              <div className="mt-1">
+                <AltTextEditor img={img} productName={product.name} onSave={(alt) => apiCall("edit-alt", { imageId: img.id, alt })} working={working !== null} />
+              </div>
             </div>
           ))}
         </div>
@@ -938,6 +973,43 @@ function ImageManager({ product, onRefresh, onInsertInDesc }: {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function AltTextEditor({ img, productName, onSave, working }: { img: WCImage; productName: string; onSave: (alt: string) => void; working: boolean }) {
+  const [editing, setEditing] = useState(false);
+  const [altValue, setAltValue] = useState(img.alt);
+
+  useEffect(() => {
+    setAltValue(img.alt);
+  }, [img.alt]);
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-1">
+        <span className="flex-1 truncate text-[10px] text-gray-500" title={img.alt || "No alt text"}>
+          {img.alt || "No alt text"}
+        </span>
+        <button onClick={() => setEditing(true)} className="text-[10px] text-blue-400 hover:text-blue-300" disabled={working}>
+          Edit
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input type="text" value={altValue} onChange={(e) => setAltValue(e.target.value)}
+        className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-1 py-0.5 text-[10px] text-gray-300 focus:border-blue-500 focus:outline-none"
+        placeholder={productName} />
+      <button onClick={() => { onSave(altValue); setEditing(false); }} disabled={working || !altValue.trim()}
+        className="text-[10px] text-green-400 hover:text-green-300 disabled:opacity-50">
+        Save
+      </button>
+      <button onClick={() => { setEditing(false); setAltValue(img.alt); }} className="text-[10px] text-gray-500 hover:text-gray-400">
+        X
+      </button>
     </div>
   );
 }

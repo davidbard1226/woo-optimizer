@@ -76,6 +76,13 @@ export async function POST(request: NextRequest) {
         images.forEach((img, i) => { img.position = i; });
         break;
       }
+      case "edit-alt": {
+        if (!imageId || typeof body.alt !== "string") {
+          return NextResponse.json({ error: "imageId and alt required" }, { status: 400 });
+        }
+        images = images.map((img) => img.id === imageId ? { ...img, alt: body.alt } : img);
+        break;
+      }
       default:
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
     }
