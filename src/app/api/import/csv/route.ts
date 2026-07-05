@@ -1,16 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createProduct } from "@/lib/woocommerce";
+import { getSetting } from "@/lib/db";
 
-interface CsvRow {
-  sku: string;
-  name: string;
-  description: string;
-  shortDescription: string;
-  regularPrice: string;
-  categories: string;
-  images: string[];
-  inStock: boolean;
-  brand: string;
+function getAuth() {
+  const wcUrl = getSetting("wc_url") || process.env.WC_URL || "";
+  const consumerKey = getSetting("wc_consumer_key") || process.env.WC_CONSUMER_KEY || "";
+  const consumerSecret = getSetting("wc_consumer_secret") || process.env.WC_CONSUMER_SECRET || "";
+  return { consumerKey, consumerSecret, wcUrl };
+}
+
+function getBaseUrl(): string {
+  const { wcUrl } = getAuth();
+  if (!wcUrl) throw new Error("WooCommerce URL not configured");
+  return `${wcUrl.replace(/\/+$/, "")}/wp-json/wc/v3`;
+}
+
+function getAuthParams(): string {
+  const { consumerKey, consumerSecret } = getAuth();
+  if (!consumerKey || !consumerSecret) throw new Error("WooCommerce API keys not configured");
+  return `consumer_key=${consumerKey}&consumer_secret=${consumerSecret}`;
+}
+
+async function wcPost(url: string, data: Record<string, unknown>): Promise<unknown> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`WooCommerce API error (${response.status}): ${text.slice(0, 300)}`);
+    }
+    return response.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function parseCsv(text: string): { header: string[]; rows: string[][] } {
@@ -25,7 +52,6 @@ function parseCsv(text: string): { header: string[]; rows: string[][] } {
     }
   }
   if (cur.trim()) lines.push(cur.trim());
-
   const header = parseLine(lines[0]);
   const rows = lines.slice(1).map(parseLine).filter((r) => r.length >= header.length);
   return { header, rows };
@@ -34,10 +60,21 @@ function parseCsv(text: string): { header: string[]; rows: string[][] } {
 function parseLine(line: string): string[] {
   const parts: string[] = [];
   let cur = "", inQ = false;
-  for (const ch of line) {
-    if (ch === '"') inQ = !inQ;
-    else if (ch === "," && !inQ) { parts.push(cur); cur = ""; }
-    else cur += ch;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQ && i + 1 < line.length && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else {
+        inQ = !inQ;
+      }
+    } else if (ch === "," && !inQ) {
+      parts.push(cur);
+      cur = "";
+    } else {
+      cur += ch;
+    }
   }
   parts.push(cur);
   return parts;
@@ -52,11 +89,9 @@ export async function POST(req: NextRequest) {
     const text = await file.text();
     const { header, rows } = parseCsv(text);
 
-    // Map header columns
     const colMap: Record<string, number> = {};
     for (let i = 0; i < header.length; i++) {
-      const h = header[i].trim().toLowerCase();
-      colMap[h] = i;
+      colMap[header[i].trim().toLowerCase()] = i;
     }
 
     const skuIdx = colMap["sku"];
@@ -69,18 +104,20 @@ export async function POST(req: NextRequest) {
     const stockIdx = colMap["in stock?"];
     const brandIdx = colMap["brand"];
 
-    const batchSize = 10;
+    const batchSize = 5;
     let offset = parseInt(formData.get("offset") as string) || 0;
-    const update = formData.get("update") === "true";
 
     const batch = rows.slice(offset, offset + batchSize);
     const results: Array<{
       sku: string;
       name: string;
-      status: "created" | "skipped" | "error";
+      status: "created" | "error";
       productId?: number;
       error?: string;
     }> = [];
+
+    const baseUrl = getBaseUrl();
+    const authParams = getAuthParams();
 
     for (const row of batch) {
       const sku = row[skuIdx]?.trim() || "";
@@ -90,9 +127,9 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
+      const price = priceIdx !== undefined ? row[priceIdx]?.trim() || "" : "";
       const description = descIdx !== undefined ? row[descIdx] || "" : "";
       const shortDescription = shortDescIdx !== undefined ? row[shortDescIdx] || "" : "";
-      const price = priceIdx !== undefined ? row[priceIdx]?.trim() || "" : "";
       const categories = catIdx !== undefined ? row[catIdx]?.trim() || "" : "";
       const imagesField = imgIdx !== undefined ? row[imgIdx]?.trim() || "" : "";
       const inStock = stockIdx !== undefined ? row[stockIdx]?.trim() === "1" : true;
@@ -112,7 +149,7 @@ export async function POST(req: NextRequest) {
         name,
         type: "simple",
         sku,
-        regular_price: price,
+        regular_price: price || "0",
         description,
         short_description: shortDescription,
         stock_status: inStock ? "instock" : "outofstock",
@@ -123,10 +160,11 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        const created = await createProduct(productData);
+        const url = `${baseUrl}/products?${authParams}`;
+        const created = await wcPost(url, productData) as { id: number };
         results.push({ sku, name, status: "created", productId: created.id });
       } catch (err) {
-        const msg = err instanceof Error ? err.message.slice(0, 200) : "Unknown error";
+        const msg = err instanceof Error ? err.message.slice(0, 300) : "Unknown error";
         results.push({ sku, name, status: "error", error: msg });
       }
     }
