@@ -47,7 +47,7 @@ async function fetchProductsAfter(afterDate: string) {
       page: String(page),
       status: "any",
       after: afterDate,
-      orderby: "date_modified",
+      orderby: "modified",
       order: "asc",
       _fields: API_FIELDS,
     });
