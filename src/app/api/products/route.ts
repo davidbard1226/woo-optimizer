@@ -5,9 +5,20 @@ import path from "path";
 
 const CACHE_FILE = path.join(process.cwd(), "data", "products-cache.json");
 
+function readCache(): { products: Array<Record<string, unknown>> } {
+  try {
+    if (fs.existsSync(CACHE_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
+      const products = Array.isArray(raw) ? raw : Array.isArray(raw?.products) ? raw.products : [];
+      return { products };
+    }
+  } catch {}
+  return { products: [] };
+}
+
 function updateCache(products: unknown[]) {
   try {
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(products, null, 2), "utf-8");
+    fs.writeFileSync(CACHE_FILE, JSON.stringify({products}, null, 2), "utf-8");
   } catch {}
 }
 
@@ -21,42 +32,57 @@ export async function GET(request: NextRequest) {
     const orderby = searchParams.get("orderby") || "date";
     const order = searchParams.get("order") || "desc";
 
-    try {
-      const result = await fetchProducts({
-        page,
-        per_page,
-        search,
-        status,
-        orderby,
-        order,
-      });
-      if (!search && page === 1) {
-        updateCache(result.products);
+    // Read cache immediately
+    const cached = readCache().products;
+
+    // Try fetching from WooCommerce with a short timeout, but return cache right away
+    let fromWoo = false;
+    if (cached.length === 0 ) {
+      try {
+        const result = await fetchProducts({ page: 1, per_page: Math.min(per_page, 100), search, status, orderby, order });
+        if (!search) updateCache(result.products);
+        return NextResponse.json({ ...result, fromCache: false });
+      } catch {
+        return NextResponse.json({ products: [], total: 0, totalPages: 0, fromCache: true });
       }
-      return NextResponse.json(result);
-    } catch (fetchErr) {
-      // On search failure, try reading from persistent cache
-      if (search) {
-        try {
-          const raw = JSON.parse(fs.readFileSync(CACHE_FILE, "utf-8"));
-          const cached = Array.isArray(raw) ? raw : raw.products || [];
-          const term = search.toLowerCase();
-          const filtered = cached.filter(
-            (p: { name?: string; sku?: string }) =>
-              (p.name || "").toLowerCase().includes(term) ||
-              (p.sku || "").toLowerCase().includes(term)
-          );
-          const start = (page - 1) * per_page;
-          return NextResponse.json({
-            products: filtered.slice(start, start + per_page),
-            total: filtered.length,
-            totalPages: Math.ceil(filtered.length / per_page),
-            searchFallback: true,
-          });
-        } catch {}
-      }
-      throw fetchErr;
     }
+
+    // Filter from cache
+    let filtered = cached;
+    if (search) {
+      const term = search.toLowerCase();
+      filtered = cached.filter(
+        (p) =>
+          ((p.name || "") as string).toLowerCase().includes(term) ||
+          ((p.sku || "") as string).toLowerCase().includes(term)
+      );
+    }
+
+    // Sort
+    const sorted = [...filtered].sort((a, b) => {
+      let cmp = 0;
+      if (orderby === "title") cmp = ((a.name || "") as string).localeCompare((b.name || "") as string);
+      else if (orderby === "price") cmp = (parseFloat(a.price as string) || 0) - (parseFloat(b.price as string) || 0);
+      else cmp = ((a.date_created || "") as string).localeCompare((b.date_created || "") as string);
+      return order === "asc" ? cmp : -cmp;
+    });
+
+    const start = (page - 1) * per_page;
+    const result = {
+      products: sorted.slice(start, start + per_page),
+      total: filtered.length,
+      totalPages: Math.ceil(filtered.length / per_page),
+      fromCache: true,
+    };
+
+    // Background refresh from WooCommerce (fire and forget)
+    if (!search && status === "any") {
+      fetchProducts({ page: 1, per_page: 100, status: "any", orderby: "title", order: "asc" })
+        .then((fresh) => { if (fresh.products.length) updateCache(fresh.products); })
+        .catch(() => {});
+    }
+
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to fetch products" },
