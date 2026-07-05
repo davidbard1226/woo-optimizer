@@ -23,70 +23,61 @@ function updateCache(products: unknown[]) {
 }
 
 export async function GET(request: NextRequest) {
-  try {
-    const searchParams = request.nextUrl.searchParams;
-    const page = parseInt(searchParams.get("page") || "1");
-    const per_page = parseInt(searchParams.get("per_page") || "20");
-    const search = searchParams.get("search") || undefined;
-    const status = searchParams.get("status") || "any";
-    const orderby = searchParams.get("orderby") || "date";
-    const order = searchParams.get("order") || "desc";
+  const searchParams = request.nextUrl.searchParams;
+  const page = parseInt(searchParams.get("page") || "1");
+  const per_page = parseInt(searchParams.get("per_page") || "20");
+  const search = searchParams.get("search") || undefined;
+  const status = searchParams.get("status") || "any";
+  const orderby = searchParams.get("orderby") || "date";
+  const order = searchParams.get("order") || "desc";
 
-    // Read cache immediately
-    const cached = readCache().products;
+  // Read cache immediately
+  const cached = readCache().products;
 
-    // Try fetching from WooCommerce with a short timeout, but return cache right away
-    let fromWoo = false;
-    if (cached.length === 0 ) {
-      try {
-        const result = await fetchProducts({ page: 1, per_page: Math.min(per_page, 100), search, status, orderby, order });
-        if (!search) updateCache(result.products);
-        return NextResponse.json({ ...result, fromCache: false });
-      } catch {
-        return NextResponse.json({ products: [], total: 0, totalPages: 0, fromCache: true });
-      }
+  // Background refresh from WooCommerce (fire and forget)
+  if (cached.length === 0) {
+    try {
+      const result = await fetchProducts({ page: 1, per_page: Math.min(per_page, 100), search, status, orderby, order });
+      if (!search || result.products.length > 0) updateCache(result.products);
+      return NextResponse.json({ ...result, fromCache: false });
+    } catch {
+      return NextResponse.json({ products: [], total: 0, totalPages: 0, fromCache: true });
     }
+  }
 
-    // Filter from cache
-    let filtered = cached;
-    if (search) {
-      const term = search.toLowerCase();
-      filtered = cached.filter(
-        (p) =>
-          ((p.name || "") as string).toLowerCase().includes(term) ||
-          ((p.sku || "") as string).toLowerCase().includes(term)
-      );
-    }
-
-    // Sort
-    const sorted = [...filtered].sort((a, b) => {
-      let cmp = 0;
-      if (orderby === "title") cmp = ((a.name || "") as string).localeCompare((b.name || "") as string);
-      else if (orderby === "price") cmp = (parseFloat(a.price as string) || 0) - (parseFloat(b.price as string) || 0);
-      else cmp = ((a.date_created || "") as string).localeCompare((b.date_created || "") as string);
-      return order === "asc" ? cmp : -cmp;
-    });
-
-    const start = (page - 1) * per_page;
-    const result = {
-      products: sorted.slice(start, start + per_page),
-      total: filtered.length,
-      totalPages: Math.ceil(filtered.length / per_page),
-      fromCache: true,
-    };
-
-    // Background refresh from WooCommerce (fire and forget)
-    if (!search && status === "any") {
-      fetchProducts({ page: 1, per_page: 100, status: "any", orderby: "title", order: "asc" })
-        .then((fresh) => { if (fresh.products.length) updateCache(fresh.products); })
-        .catch(() => {});
-    }
-
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch products" },
-      { status: 500 }
+  // Filter from cache
+  let filtered = cached;
+  if (search) {
+    const term = search.toLowerCase();
+    filtered = cached.filter(
+      (p) =>
+        ((p.name || "") as string).toLowerCase().includes(term) ||
+        ((p.sku || "") as string).toLowerCase().includes(term)
     );
   }
+
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    if (orderby === "title") cmp = ((a.name || "") as string).localeCompare((b.name || "") as string);
+    else if (orderby === "price") cmp = (parseFloat(a.price as string) || 0) - (parseFloat(b.price as string) || 0);
+    else cmp = ((a.date_created || "") as string).localeCompare((b.date_created || "") as string);
+    return order === "asc" ? cmp : -cmp;
+  });
+
+  const start = (page - 1) * per_page;
+
+  // Background refresh from WooCommerce
+  if (!search && status === "any") {
+    fetchProducts({ page: 1, per_page: 100, status: "any", orderby: "title", order: "asc" })
+      .then((fresh) => { if (fresh.products.length) updateCache(fresh.products); })
+      .catch(() => {});
+  }
+
+  return NextResponse.json({
+    products: sorted.slice(start, start + per_page),
+    total: filtered.length,
+    totalPages: Math.ceil(filtered.length / per_page),
+    fromCache: true,
+  });
 }
