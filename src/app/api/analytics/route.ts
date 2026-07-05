@@ -6,7 +6,6 @@ import { WCProduct } from "@/lib/types";
 import fs from "fs";
 import path from "path";
 
-const MAX_PRODUCTS_TO_SCAN = 300;
 const CACHE_FILE = path.join(process.cwd(), "data", "products-cache.json");
 
 function updateCache(products: WCProduct[]) {
@@ -106,7 +105,7 @@ async function fetchAllFromWooCommerce() {
     total = result.total;
     totalPages = result.totalPages;
     page++;
-  } while (page <= totalPages && allProducts.length < MAX_PRODUCTS_TO_SCAN);
+  } while (page <= totalPages);
 
   updateCache(allProducts);
   return computeStats(allProducts, total);

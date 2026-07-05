@@ -67,11 +67,22 @@ export async function GET(request: NextRequest) {
 
   const start = (page - 1) * per_page;
 
-  // Background refresh from WooCommerce
+  // Background refresh from WooCommerce (paginate all pages)
   if (!search && status === "any") {
-    fetchProducts({ page: 1, per_page: 100, status: "any", orderby: "title", order: "asc" })
-      .then((fresh) => { if (fresh.products.length) updateCache(fresh.products); })
-      .catch(() => {});
+    (async () => {
+      try {
+        const all: Array<Record<string, unknown>> = [];
+        let p = 1;
+        let totalPages = 1;
+        while (p <= totalPages) {
+          const result = await fetchProducts({ page: p, per_page: 100, status: "any", orderby: "title", order: "asc" });
+          all.push(...result.products);
+          totalPages = result.totalPages;
+          p++;
+        }
+        if (all.length) updateCache(all);
+      } catch {}
+    })();
   }
 
   return NextResponse.json({
