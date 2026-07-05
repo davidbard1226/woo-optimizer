@@ -91,6 +91,7 @@ export async function fetchProducts(params: {
   if (params.status && params.status !== "any") searchParams.set("status", params.status);
   if (params.orderby) searchParams.set("orderby", params.orderby);
   if (params.order) searchParams.set("order", params.order);
+  searchParams.set("_fields", "id,name,slug,permalink,type,status,featured,catalog_visibility,description,short_description,sku,price,regular_price,sale_price,on_sale,purchasable,total_sales,virtual,downloadable,date_created,date_created_gmt,date_modified,date_modified_gmt,stock_status,stock_quantity,manage_stock,categories,tags,images,attributes,average_rating,review_count,weight,dimensions");
 
   const url = `${baseUrl}/products?${searchParams.toString()}`;
   const response = await wcFetch(url);
