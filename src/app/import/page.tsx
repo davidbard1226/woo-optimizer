@@ -10,6 +10,7 @@ import {
   ChevronRight,
   FileImage,
   PackagePlus,
+  Upload,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -28,7 +29,7 @@ interface ProductStats {
   remaining: number;
 }
 
-type ResultStatus = "matched" | "not_found" | "error" | "created" | "exists";
+type ResultStatus = "matched" | "not_found" | "error" | "created" | "exists" | "skipped";
 
 interface ImportResult {
   sku: string;
@@ -47,7 +48,7 @@ interface ImportProgress {
   results: ImportResult[];
 }
 
-type Mode = "images" | "products";
+type Mode = "images" | "products" | "csv";
 
 export default function ImportPage() {
   const [mode, setMode] = useState<Mode>("images");
@@ -61,6 +62,8 @@ export default function ImportPage() {
   const [nameMatch, setNameMatch] = useState(true);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [onlyIssues, setOnlyIssues] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [updateExisting, setUpdateExisting] = useState(false);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -81,6 +84,49 @@ export default function ImportPage() {
       setLoading(false);
     }
   }
+
+  const handleCsvImport = useCallback(async () => {
+    if (!csvFile) return;
+    setImporting(true);
+    setResults([]);
+    setProgress(null);
+    cancelledRef.current = false;
+    let currentOffset = 0;
+    let allResults: ImportResult[] = [];
+
+    while (!cancelledRef.current) {
+      try {
+        const formData = new FormData();
+        formData.append("file", csvFile);
+        formData.append("offset", String(currentOffset));
+        formData.append("update", String(updateExisting));
+
+        const res = await fetch("/api/import/csv", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || "Import failed");
+        }
+
+        const data: ImportProgress = await res.json();
+        setProgress(data);
+        allResults = [...allResults, ...data.results];
+        setResults(allResults);
+        currentOffset = data.offset;
+
+        if (data.remaining <= 0) break;
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Import failed");
+        break;
+      }
+    }
+
+    setImporting(false);
+    toast.success("CSV import complete!");
+  }, [csvFile, updateExisting]);
 
   const handleImport = useCallback(async () => {
     setImporting(true);
@@ -127,7 +173,7 @@ export default function ImportPage() {
   }
 
   const matched = results.filter((r) => r.status === "matched" || r.status === "created");
-  const notFound = results.filter((r) => r.status === "not_found" || r.status === "exists");
+  const notFound = results.filter((r) => r.status === "not_found" || r.status === "exists" || r.status === "skipped");
   const errors = results.filter((r) => r.status === "error");
 
   const displayResults = onlyIssues
@@ -151,7 +197,9 @@ export default function ImportPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Import Products</h1>
         <p className="text-gray-400">
-          Push scraped SanDisk data from FirstShop to your Bonolo Online store
+          {mode === "csv"
+            ? "Upload a CSV file to create products in WooCommerce"
+            : "Push scraped SanDisk data from FirstShop to your Bonolo Online store"}
         </p>
       </div>
 
@@ -179,37 +227,61 @@ export default function ImportPage() {
           <PackagePlus className="h-4 w-4" />
           Create Missing Products
         </button>
+        <button
+          onClick={() => setMode("csv")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors ${
+            mode === "csv"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-800 text-gray-400 hover:text-white"
+          }`}
+        >
+          <Upload className="h-4 w-4" />
+          CSV Import
+        </button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-        {mode === "images" && stats ? (
-          <>
-            <StatCard icon={<FileImage className="h-5 w-5 text-blue-400" />} label="Products in Mapping" value={stats.totalSkus} bg="bg-blue-500/10" />
-            <StatCard icon={<CheckCircle className="h-5 w-5 text-green-400" />} label="Proper SKUs" value={stats.properSkus} bg="bg-green-500/10" />
-            <StatCard icon={<Download className="h-5 w-5 text-purple-400" />} label="Total Images" value={stats.totalImages} bg="bg-purple-500/10" />
-            <StatCard icon={<FileImage className="h-5 w-5 text-orange-400" />} label="Avg Images/Product" value={stats.avgImagesPerSku} bg="bg-orange-500/10" />
-          </>
-        ) : mode === "products" && productStats ? (
-          <>
-            <StatCard icon={<PackagePlus className="h-5 w-5 text-blue-400" />} label="Products Ready" value={productStats.totalProducts} bg="bg-blue-500/10" />
-            <StatCard icon={<CheckCircle className="h-5 w-5 text-green-400" />} label="With Descriptions" value={productStats.totalProducts} bg="bg-green-500/10" />
-            <StatCard icon={<Download className="h-5 w-5 text-purple-400" />} label="With Images" value={productStats.totalProducts} bg="bg-purple-500/10" />
-            <StatCard icon={<FileImage className="h-5 w-5 text-orange-400" />} label="With Prices" value={productStats.totalProducts} bg="bg-orange-500/10" />
-          </>
-        ) : (
-          <div className="col-span-4 rounded-xl border border-red-800 bg-red-900/20 p-6 text-center">
-            <AlertCircle className="mx-auto mb-3 h-8 w-8 text-red-400" />
-            <p className="text-red-400">Data mapping not found.</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Run preprocessing scripts first.
-            </p>
-          </div>
-        )}
-      </div>
+      {mode !== "csv" && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          {mode === "images" && stats ? (
+            <>
+              <StatCard icon={<FileImage className="h-5 w-5 text-blue-400" />} label="Products in Mapping" value={stats.totalSkus} bg="bg-blue-500/10" />
+              <StatCard icon={<CheckCircle className="h-5 w-5 text-green-400" />} label="Proper SKUs" value={stats.properSkus} bg="bg-green-500/10" />
+              <StatCard icon={<Download className="h-5 w-5 text-purple-400" />} label="Total Images" value={stats.totalImages} bg="bg-purple-500/10" />
+              <StatCard icon={<FileImage className="h-5 w-5 text-orange-400" />} label="Avg Images/Product" value={stats.avgImagesPerSku} bg="bg-orange-500/10" />
+            </>
+          ) : mode === "products" && productStats ? (
+            <>
+              <StatCard icon={<PackagePlus className="h-5 w-5 text-blue-400" />} label="Products Ready" value={productStats.totalProducts} bg="bg-blue-500/10" />
+              <StatCard icon={<CheckCircle className="h-5 w-5 text-green-400" />} label="With Descriptions" value={productStats.totalProducts} bg="bg-green-500/10" />
+              <StatCard icon={<Download className="h-5 w-5 text-purple-400" />} label="With Images" value={productStats.totalProducts} bg="bg-purple-500/10" />
+              <StatCard icon={<FileImage className="h-5 w-5 text-orange-400" />} label="With Prices" value={productStats.totalProducts} bg="bg-orange-500/10" />
+            </>
+          ) : (
+            <div className="col-span-4 rounded-xl border border-red-800 bg-red-900/20 p-6 text-center">
+              <AlertCircle className="mx-auto mb-3 h-8 w-8 text-red-400" />
+              <p className="text-red-400">Data mapping not found.</p>
+              <p className="mt-1 text-sm text-gray-500">
+                Run preprocessing scripts first.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Mode Description */}
-      {mode === "images" ? (
+      {mode === "csv" ? (
+        <div className="rounded-xl border border-blue-800 bg-blue-900/20 p-6">
+          <h2 className="mb-2 text-lg font-semibold text-blue-300">CSV Import</h2>
+          <p className="mb-4 text-sm text-blue-400">
+            Upload a WooCommerce-compatible CSV export file. Products will be created as new
+            published products with SKU, name, description, prices, images, and categories.
+          </p>
+          <p className="text-sm text-blue-400">
+            Expected columns: SKU, Name, Description, Short description, Regular price, Categories, Images, In stock?, Brand
+          </p>
+        </div>
+      ) : mode === "images" ? (
         <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
           <h2 className="mb-2 text-lg font-semibold text-white">Import Images</h2>
           <p className="mb-4 text-sm text-gray-400">
@@ -222,7 +294,7 @@ export default function ImportPage() {
         <div className="rounded-xl border border-amber-800 bg-amber-900/20 p-6">
           <h2 className="mb-2 text-lg font-semibold text-amber-300">Create Missing Products</h2>
           <p className="mb-4 text-sm text-amber-400">
-            Scans your WooCommerce store for each SanDisk SKU. If a product doesn't exist, it will be
+            Scans your WooCommerce store for each SanDisk SKU. If a product doesn&apos;t exist, it will be
             created with the scraped name, description, bullet points, price (with markup), images, and
             categories. This will skip any SKU that already exists in your store.
           </p>
@@ -236,57 +308,91 @@ export default function ImportPage() {
       <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
         <h2 className="mb-4 text-lg font-semibold text-white">Run</h2>
 
-        <div className="mb-4 space-y-3">
-          <div className="flex items-center gap-4">
-            <label className="text-sm text-gray-400">Batch size:</label>
-            <input
-              type="number"
-              value={batchSize}
-              onChange={(e) => setBatchSize(parseInt(e.target.value) || 20)}
-              min={1}
-              max={100}
-              className="w-20 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white"
-            />
-            <span className="text-xs text-gray-500">
-              Processed per request ({totalToProcess} total)
-            </span>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-400">
-            <input
-              type="checkbox"
-              checked={skipCompleted}
-              onChange={(e) => setSkipCompleted(e.target.checked)}
-              className="rounded border-gray-600 bg-gray-800"
-            />
-            Skip already processed — resume where I left off
-            {mode === "images" && stats && stats.completed > 0 && (
-              <span className="text-xs text-blue-400">({stats.completed} done, {stats.remaining} remaining)</span>
-            )}
-            {mode === "products" && productStats && productStats.completed > 0 && (
-              <span className="text-xs text-blue-400">({productStats.completed} done, {productStats.remaining} remaining)</span>
-            )}
-          </label>
-          {mode === "images" && (
+        {mode === "csv" ? (
+          <div className="mb-4 space-y-4">
+            {/* File Upload */}
+            <div className="flex items-center gap-4">
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border-2 border-dashed border-gray-700 bg-gray-800 px-6 py-4 text-sm text-gray-400 hover:border-blue-500 hover:text-blue-400">
+                <Upload className="h-5 w-5" />
+                {csvFile ? csvFile.name : "Choose CSV file"}
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+                />
+              </label>
+              {csvFile && (
+                <span className="text-sm text-gray-500">
+                  {(csvFile.size / 1024 / 1024).toFixed(1)} MB
+                </span>
+              )}
+            </div>
+
             <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-400">
               <input
                 type="checkbox"
-                checked={nameMatch}
-                onChange={(e) => setNameMatch(e.target.checked)}
+                checked={updateExisting}
+                onChange={(e) => setUpdateExisting(e.target.checked)}
                 className="rounded border-gray-600 bg-gray-800"
               />
-              Fall back to name-based matching when SKU not found
+              Update existing products (match by SKU)
             </label>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="mb-4 space-y-3">
+            <div className="flex items-center gap-4">
+              <label className="text-sm text-gray-400">Batch size:</label>
+              <input
+                type="number"
+                value={batchSize}
+                onChange={(e) => setBatchSize(parseInt(e.target.value) || 20)}
+                min={1}
+                max={100}
+                className="w-20 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white"
+              />
+              <span className="text-xs text-gray-500">
+                Processed per request ({totalToProcess} total)
+              </span>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-400">
+              <input
+                type="checkbox"
+                checked={skipCompleted}
+                onChange={(e) => setSkipCompleted(e.target.checked)}
+                className="rounded border-gray-600 bg-gray-800"
+              />
+              Skip already processed — resume where I left off
+              {mode === "images" && stats && stats.completed > 0 && (
+                <span className="text-xs text-blue-400">({stats.completed} done, {stats.remaining} remaining)</span>
+              )}
+              {mode === "products" && productStats && productStats.completed > 0 && (
+                <span className="text-xs text-blue-400">({productStats.completed} done, {productStats.remaining} remaining)</span>
+              )}
+            </label>
+            {mode === "images" && (
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={nameMatch}
+                  onChange={(e) => setNameMatch(e.target.checked)}
+                  className="rounded border-gray-600 bg-gray-800"
+                />
+                Fall back to name-based matching when SKU not found
+              </label>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           {!importing ? (
             <button
-              onClick={handleImport}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+              onClick={mode === "csv" ? handleCsvImport : handleImport}
+              disabled={mode === "csv" && !csvFile}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Download className="h-4 w-4" />
-              {mode === "images" ? "Start Image Import" : "Start Creating Products"}
+              {mode === "csv" ? "Start CSV Import" : mode === "images" ? "Start Image Import" : "Start Creating Products"}
             </button>
           ) : (
             <button
@@ -330,7 +436,7 @@ export default function ImportPage() {
               </span>
               {notFound.length > 0 && (
                 <span className="text-sm text-yellow-400">
-                  {notFound.length} {mode === "images" ? "not found" : "already exist"}
+                  {notFound.length} {mode === "images" ? "not found" : "skipped"}
                 </span>
               )}
               {errors.length > 0 && (
@@ -357,7 +463,7 @@ export default function ImportPage() {
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   {r.status === "matched" || r.status === "created" ? (
                     <CheckCircle className="h-4 w-4 shrink-0 text-green-400" />
-                  ) : r.status === "not_found" || r.status === "exists" ? (
+                  ) : r.status === "not_found" || r.status === "exists" || r.status === "skipped" ? (
                     <AlertCircle className="h-4 w-4 shrink-0 text-yellow-400" />
                   ) : (
                     <XCircle className="h-4 w-4 shrink-0 text-red-400" />
